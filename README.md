@@ -19,7 +19,7 @@
 - **正向准入状态机**：新流必须 `PASS` 才进入 stable；仅基础设施软失败可在最近一次 PASS 后短时 `GRACE`；4xx、格式或解码失败立即移出。
 - **请求头透传**：保留公开安全的 User-Agent / Referer / Origin 等头，验证条件与小董电视播放条件一致；Cookie/Authorization 不进入公共产物。
 - **多格式产出**：`stable.m3u` / `stable.txt`（严格）、`all.m3u` / `all.txt`（候选），以及从 stable 派生的 `cn.m3u` / `global.m3u`；`meta.json` 提供来源和验证证据。
-- **隔离与原子发布**：GitHub Actions 每 6 小时以 4 个只读分片深验；质量门禁通过后，产物、状态、元数据以同一 generation 单提交发布到 `output`。
+- **隔离与原子发布**：GitHub Actions 每 6 小时在禁用 IPv6、阻断私网/metadata egress 的容器中准备并以 4 个只读分片深验；质量门禁通过后，产物、状态、元数据以同一 generation 单提交发布到 `output`。
 
 ## 示例
 

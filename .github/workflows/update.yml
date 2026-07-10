@@ -17,6 +17,8 @@ on:
       - "config/**"
       - "src/**"
       - "tests/**"
+      - "Dockerfile"
+      - ".dockerignore"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/update.yml"
@@ -85,26 +87,31 @@ jobs:
             fi
           fi
 
-      - name: 隔离候选准备网络
+      - name: 构建隔离验证器
+        run: docker build -t "iptv-pipeline-validator:${GITHUB_SHA}" .
+
+      - name: 限制验证容器 egress
         run: |
           set -euo pipefail
-          sudo iptables -I OUTPUT 1 -d 127.0.0.0/8 -p udp --dport 53 -j ACCEPT
-          sudo iptables -I OUTPUT 2 -d 127.0.0.0/8 -p tcp --dport 53 -j ACCEPT
+          sudo iptables -N DOCKER-USER 2>/dev/null || true
+          sudo iptables -I DOCKER-USER 1 \
+            -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
           for cidr in \
-            0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 \
+            0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 \
             169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 \
             198.18.0.0/15 224.0.0.0/4 240.0.0.0/4; do
-            sudo iptables -A OUTPUT -d "${cidr}" -j REJECT
-          done
-          for cidr in ::/128 ::1/128 fc00::/7 fe80::/10 ff00::/8; do
-            sudo ip6tables -A OUTPUT -d "${cidr}" -j REJECT
+            sudo iptables -I DOCKER-USER 2 \
+              -i docker0 -d "${cidr}" -j REJECT
           done
 
       - name: 拉取、归一化与全线路 L0 快筛
         run: |
-          uv run iptv-pipeline-ci prepare \
-            --config config \
-            --bundle ci-work/candidates.json
+          docker run --rm \
+            --network bridge \
+            --sysctl net.ipv6.conf.all.disable_ipv6=1 \
+            --volume "${PWD}/ci-work:/data" \
+            "iptv-pipeline-validator:${GITHUB_SHA}" \
+            prepare --config /app/config --bundle /data/candidates.json
 
       - name: 上传候选与上一代状态
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -131,44 +138,42 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 安装 uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          enable-cache: true
-
-      - name: 安装 Python 依赖与 FFmpeg
-        run: |
-          uv sync --frozen
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-
       - name: 下载候选
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: prepared-candidates
           path: ci-work
 
-      - name: 隔离媒体探测网络
+      - name: 构建隔离验证器
+        run: docker build -t "iptv-pipeline-validator:${GITHUB_SHA}" .
+
+      - name: 限制验证容器 egress
         run: |
           set -euo pipefail
-          sudo iptables -I OUTPUT 1 -d 127.0.0.0/8 -p udp --dport 53 -j ACCEPT
-          sudo iptables -I OUTPUT 2 -d 127.0.0.0/8 -p tcp --dport 53 -j ACCEPT
+          sudo iptables -N DOCKER-USER 2>/dev/null || true
+          sudo iptables -I DOCKER-USER 1 \
+            -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
           for cidr in \
-            0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 \
+            0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 \
             169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 \
             198.18.0.0/15 224.0.0.0/4 240.0.0.0/4; do
-            sudo iptables -A OUTPUT -d "${cidr}" -j REJECT
-          done
-          for cidr in ::/128 ::1/128 fc00::/7 fe80::/10 ff00::/8; do
-            sudo ip6tables -A OUTPUT -d "${cidr}" -j REJECT
+            sudo iptables -I DOCKER-USER 2 \
+              -i docker0 -d "${cidr}" -j REJECT
           done
 
       - name: FFprobe + FFmpeg 分片深验
         run: |
-          uv run iptv-pipeline-ci verify \
-            --config config \
-            --bundle ci-work/candidates.json \
-            --output "ci-results/deep-results-${{ matrix.shard }}.json" \
+          mkdir -p ci-results
+          docker run --rm \
+            --network bridge \
+            --sysctl net.ipv6.conf.all.disable_ipv6=1 \
+            --volume "${PWD}/ci-work:/data:ro" \
+            --volume "${PWD}/ci-results:/results" \
+            "iptv-pipeline-validator:${GITHUB_SHA}" \
+            verify \
+            --config /app/config \
+            --bundle /data/candidates.json \
+            --output "/results/deep-results-${{ matrix.shard }}.json" \
             --shard-index "${{ matrix.shard }}" \
             --shard-count 4
 

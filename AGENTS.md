@@ -43,6 +43,7 @@ config/upstreams.txt → fetch → parse(headers/m3u/txt) → normalize
 - **产物契约**：App 只消费 `stable.m3u`；`all.m3u`/`all.txt` 仅诊断。`cn.m3u`/`global.m3u` 从 stable 派生；所有产物与 `meta.json`、`.state/health.json` 必须共享同一 generation。
 - **原子发布**：状态只放 output 分支；验证 job 无写权限。质量门禁失败时 output SHA 必须不变，更新必须使用代际校验/`force-with-lease`，禁止盲目 force-push。
 - **公共头安全**：只透传 UA/Referer/Origin/Accept 类头，禁止 Cookie、Authorization、CR/LF 进入产物或日志；FFmpeg 命令不得拼 shell 字符串。
+- **网络隔离**：CI 的 prepare/verify 必须在无凭据容器内运行，并通过 `DOCKER-USER` 阻断私网、metadata、组播目标；禁止改回 host `OUTPUT` 防火墙（会切断 Actions runner 心跳）。
 - **别名表** `config/aliases.json` 是唯一需要人工边跑边补的「脏活」。新增频道归并写这里，不要硬编码进代码。
 - 新增依赖优先 `uv add`，不手改 `uv.lock`。
 - 所有测试必须真实断言；改解析/归一化/准入/状态机/发布契约须补对应测试。
