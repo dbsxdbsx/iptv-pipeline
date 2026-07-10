@@ -5,11 +5,20 @@
 
 from __future__ import annotations
 
+import json
 import re
+from urllib.parse import parse_qsl
 
 from .models import Stream
+from .safety import sanitize_headers
 
 _EXTINF_ATTR_RE = re.compile(r'([\w-]+)="([^"]*)"')
+_ATTR_HEADER_NAMES = {
+    "http-user-agent": "User-Agent",
+    "http-referrer": "Referer",
+    "http-referer": "Referer",
+    "http-origin": "Origin",
+}
 
 
 def parse_content(text: str, source: str) -> list[Stream]:
@@ -32,9 +41,61 @@ def _display_name(extinf_line: str) -> str:
     return ""
 
 
+def _headers_from_attrs(attrs: dict[str, str]) -> dict[str, str]:
+    return sanitize_headers(
+        {canonical: attrs[key] for key, canonical in _ATTR_HEADER_NAMES.items() if key in attrs}
+    )
+
+
+def _headers_from_pairs(value: str) -> dict[str, str]:
+    """解析 ``User-Agent=x&Referer=y`` 一类头参数。"""
+    return sanitize_headers({key: val for key, val in parse_qsl(value, keep_blank_values=False)})
+
+
+def _headers_from_directive(line: str) -> dict[str, str]:
+    if line.startswith("#EXTHTTP:"):
+        try:
+            payload = json.loads(line.removeprefix("#EXTHTTP:").strip())
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        return sanitize_headers({str(key): str(value) for key, value in payload.items()})
+
+    if line.startswith("#EXTVLCOPT:"):
+        option = line.removeprefix("#EXTVLCOPT:").strip()
+    elif line.startswith("#KODIPROP:"):
+        option = line.removeprefix("#KODIPROP:").strip()
+    else:
+        return {}
+
+    key, separator, value = option.partition("=")
+    if not separator:
+        return {}
+    key = key.strip().lower()
+    value = value.strip()
+    if key in _ATTR_HEADER_NAMES:
+        return sanitize_headers({_ATTR_HEADER_NAMES[key]: value})
+    if key in {
+        "inputstream.adaptive.stream_headers",
+        "inputstream.adaptive.manifest_headers",
+    }:
+        return _headers_from_pairs(value)
+    return {}
+
+
+def _split_url_headers(value: str) -> tuple[str, dict[str, str]]:
+    """拆分 ``URL|User-Agent=...&Referer=...`` 形式。"""
+    url, separator, options = value.partition("|")
+    if not separator:
+        return value, {}
+    return url.strip(), _headers_from_pairs(options)
+
+
 def parse_m3u(text: str, source: str) -> list[Stream]:
     streams: list[Stream] = []
     pending: dict[str, str] | None = None
+    pending_headers: dict[str, str] = {}
 
     for raw in text.splitlines():
         line = raw.strip()
@@ -47,23 +108,30 @@ def parse_m3u(text: str, source: str) -> list[Stream]:
                 "logo": attrs.get("tvg-logo", ""),
                 "tvg_id": attrs.get("tvg-id", ""),
             }
+            pending_headers.update(_headers_from_attrs(attrs))
+        elif line.startswith(("#EXTVLCOPT:", "#KODIPROP:", "#EXTHTTP:")):
+            pending_headers.update(_headers_from_directive(line))
         elif line.startswith("#"):
-            # #EXTM3U / #EXTVLCOPT / #KODIPROP 等，忽略（v1 不透传自定义头）
+            # #EXTM3U 与其他不影响播放的指令
             continue
         else:
             name = (pending or {}).get("name", "").strip()
             if name:
+                url, pipe_headers = _split_url_headers(line)
+                stream_headers = {**pending_headers, **pipe_headers}
                 streams.append(
                     Stream(
-                        url=line,
+                        url=url,
                         name=name,
                         raw_name=name,
                         logo=(pending or {}).get("logo", ""),
                         tvg_id=(pending or {}).get("tvg_id", ""),
                         source=source,
+                        headers=sanitize_headers(stream_headers),
                     )
                 )
             pending = None
+            pending_headers = {}
 
     return streams
 
@@ -89,9 +157,18 @@ def parse_txt(text: str, source: str) -> list[Stream]:
             continue
 
         # 一行多 URL，用 # 分隔
-        for url in url_part.split("#"):
-            url = url.strip()
+        for raw_url in url_part.split("#"):
+            raw_url = raw_url.strip()
+            url, headers = _split_url_headers(raw_url)
             if url.lower().startswith(("http://", "https://", "rtmp://", "rtp://")):
-                streams.append(Stream(url=url, name=name, raw_name=name, source=source))
+                streams.append(
+                    Stream(
+                        url=url,
+                        name=name,
+                        raw_name=name,
+                        source=source,
+                        headers=headers,
+                    )
+                )
 
     return streams

@@ -11,9 +11,17 @@ sync:
 run-fast:
     uv run iptv-pipeline --no-probe
 
-# v1：完整流程（含验证）
+# 完整流程（含 FFmpeg 深验，可能耗时较长）
 run:
     uv run iptv-pipeline
+
+# 仅 L0 快筛，不产生 stable 条目
+run-fast-check:
+    uv run iptv-pipeline --skip-deep
+
+# CI 候选准备阶段
+prepare:
+    uv run iptv-pipeline-ci prepare --bundle ci-work/candidates.json
 
 # 单元测试
 test:

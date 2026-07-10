@@ -14,6 +14,9 @@ venv/
 # 本地产出（CI 会 push 到 output 分支，主分支不跟踪产物）
 /dist-output/
 /output/
+/ci-work/
+/ci-results/
+/state/
 
 # 编辑器
 .idea/

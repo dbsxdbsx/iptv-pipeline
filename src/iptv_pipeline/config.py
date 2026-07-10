@@ -35,6 +35,19 @@ class GroupRule:
     priority_names: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ValidationConfig:
+    fast_timeout_seconds: int = 8
+    deep_timeout_seconds: int = 20
+    decode_seconds: int = 4
+    deep_concurrency: int = 4
+    stable_max_per_channel: int = 2
+    grace_hours: int = 12
+    grace_rounds: int = 2
+    minimum_stable_channels: int = 100
+    maximum_drop_ratio: float = 0.25
+
+
 @dataclass
 class Config:
     upstreams: list[str]
@@ -45,6 +58,7 @@ class Config:
     blacklist: list[str]
     group_rules: list[GroupRule]
     default_group: str
+    validation: ValidationConfig = field(default_factory=ValidationConfig)
 
     @classmethod
     def load(cls, config_dir: Path) -> Config:
@@ -53,6 +67,7 @@ class Config:
 
         alias_to_canonical, canonical_names = _load_aliases(config_dir / "aliases.json")
         group_rules, default_group = _load_groups(config_dir / "groups.json")
+        validation = _load_validation(config_dir / "validation.json")
 
         return cls(
             upstreams=upstreams,
@@ -61,6 +76,7 @@ class Config:
             blacklist=blacklist,
             group_rules=group_rules,
             default_group=default_group,
+            validation=validation,
         )
 
 
@@ -104,3 +120,20 @@ def _load_groups(path: Path) -> tuple[list[GroupRule], str]:
             )
         )
     return rules, default_group
+
+
+def _load_validation(path: Path) -> ValidationConfig:
+    if not path.exists():
+        return ValidationConfig()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return ValidationConfig(
+        fast_timeout_seconds=max(1, int(data.get("fast_timeout_seconds", 8))),
+        deep_timeout_seconds=max(5, int(data.get("deep_timeout_seconds", 20))),
+        decode_seconds=max(2, int(data.get("decode_seconds", 4))),
+        deep_concurrency=max(1, min(8, int(data.get("deep_concurrency", 4)))),
+        stable_max_per_channel=max(1, min(5, int(data.get("stable_max_per_channel", 2)))),
+        grace_hours=max(0, int(data.get("grace_hours", 12))),
+        grace_rounds=max(0, int(data.get("grace_rounds", 2))),
+        minimum_stable_channels=max(1, int(data.get("minimum_stable_channels", 100))),
+        maximum_drop_ratio=max(0.0, min(1.0, float(data.get("maximum_drop_ratio", 0.25)))),
+    )

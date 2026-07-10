@@ -5,7 +5,7 @@
   "CCTV-3": ["cctv3", "cctv-3", "cctv3综艺", "综艺频道"],
   "CCTV-4": ["cctv4", "cctv-4", "cctv4中文国际", "中文国际"],
   "CCTV-5": ["cctv5", "cctv-5", "cctv5体育", "体育频道"],
-  "CCTV-5+": ["cctv5+", "cctv-5+", "cctv5plus", "cctv5p", "体育赛事"],
+  "CCTV-5+": ["cctv5+", "cctv-5+", "cctv5plus", "cctv5p", "体育赛事", "cctv5+体育赛事", "cctv-5+体育赛事"],
   "CCTV-6": ["cctv6", "cctv-6", "cctv6电影", "电影频道"],
   "CCTV-7": ["cctv7", "cctv-7", "cctv7国防军事", "国防军事"],
   "CCTV-8": ["cctv8", "cctv-8", "cctv8电视剧", "电视剧频道"],

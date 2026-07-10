@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -44,7 +45,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="跳过有效性验证（v0 模式，只聚合去重）",
     )
+    p.add_argument(
+        "--skip-deep",
+        action="store_true",
+        help="只跑 HTTP 快筛，不产出 stable 条目（开发诊断用）",
+    )
     p.add_argument("--probe-timeout", type=int, default=8, help="单条流探测超时秒数")
+    p.add_argument(
+        "--network-vantage",
+        default="github-hosted" if os.environ.get("GITHUB_ACTIONS") else "local",
+        help="写入 meta.json 的网络验证视角",
+    )
     return p.parse_args(argv)
 
 
@@ -58,7 +69,9 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=Path(args.output),
             state_path=Path(args.state),
             do_probe=not args.no_probe,
+            do_deep_probe=not args.no_probe and not args.skip_deep,
             probe_timeout=args.probe_timeout,
+            network_vantage=args.network_vantage,
         )
     )
 

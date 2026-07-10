@@ -1,0 +1,12 @@
+{
+  "_comment": "stable.m3u 严格准入参数。深验成功才首次进入；仅基础设施软失败允许短暂宽限。",
+  "fast_timeout_seconds": 8,
+  "deep_timeout_seconds": 20,
+  "decode_seconds": 4,
+  "deep_concurrency": 4,
+  "stable_max_per_channel": 2,
+  "grace_hours": 12,
+  "grace_rounds": 2,
+  "minimum_stable_channels": 100,
+  "maximum_drop_ratio": 0.25
+}

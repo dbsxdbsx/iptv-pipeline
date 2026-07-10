@@ -34,6 +34,8 @@ def test_normalize_key_strips_noise_and_separators():
     assert normalize_key("CCTV-1 高清") == normalize_key("cctv1")
     assert normalize_key("CCTV　1") == normalize_key("CCTV1")  # 全角空格
     assert normalize_key("CCTV-5+") == "cctv5+"  # 保留 +
+    assert normalize_key("CCTV-7 (720p)") == normalize_key("CCTV7")
+    assert normalize_key("东方卫视（2160P）") == normalize_key("东方卫视")
 
 
 def test_alias_merges_variants_into_one_channel():
@@ -55,6 +57,36 @@ def test_dedup_same_name_same_url():
     ]
     channels = build_channels(streams, _cfg())
     assert len(channels[0].streams) == 1
+
+
+def test_dedup_merges_upstream_provenance():
+    streams = [
+        Stream(url="http://a.example/1", name="", raw_name="CCTV1", source="source-a"),
+        Stream(url="http://a.example/1", name="", raw_name="CCTV-1", source="source-b"),
+    ]
+    channels = build_channels(streams, _cfg())
+
+    assert channels[0].streams[0].sources == ["source-a", "source-b"]
+
+
+def test_same_url_with_different_headers_is_not_deduplicated():
+    streams = [
+        Stream(
+            url="http://a.example/1",
+            name="",
+            raw_name="CCTV1",
+            headers={"Referer": "https://a.example/"},
+        ),
+        Stream(
+            url="http://a.example/1",
+            name="",
+            raw_name="CCTV-1",
+            headers={"Referer": "https://b.example/"},
+        ),
+    ]
+    channels = build_channels(streams, _cfg())
+
+    assert len(channels[0].streams) == 2
 
 
 def test_blacklist_filters_stream():
@@ -95,11 +127,22 @@ def test_sort_priority_and_natural_order():
 
 
 def test_ipv6_detection_and_marking():
-    assert is_ipv6_url("http://[2409:8087::1]:80/live.m3u8")
+    assert is_ipv6_url("http://[2606:4700::1111]:80/live.m3u8")
     assert not is_ipv6_url("http://1.2.3.4:80/live.m3u8")
-    streams = [Stream(url="http://[2409:8087::1]/1", name="", raw_name="CCTV1")]
+    streams = [Stream(url="http://[2606:4700::1111]/1", name="", raw_name="CCTV1")]
     channels = build_channels(streams, _cfg())
     assert channels[0].streams[0].is_ipv6 is True
+
+
+def test_private_and_multicast_hosts_are_filtered():
+    streams = [
+        Stream(url="http://127.0.0.1/live.m3u8", name="", raw_name="CCTV1"),
+        Stream(url="rtp://239.0.0.1:5000", name="", raw_name="CCTV1"),
+        Stream(url="https://public.example/live.m3u8", name="", raw_name="CCTV1"),
+    ]
+    channels = build_channels(streams, _cfg())
+
+    assert [stream.url for stream in channels[0].streams] == ["https://public.example/live.m3u8"]
 
 
 def test_is_chinese_channel():

@@ -3,38 +3,36 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from .config import Config
 from .models import Channel, Stream
+from .safety import is_safe_stream_url
 
-# 归一化时移除的噪声词（画质标签等），避免 "CCTV1HD" 与 "CCTV1" 被当成两个频道
-_NOISE_TOKENS = [
-    "高清",
-    "超清",
-    "标清",
-    "蓝光",
-    "hd",
-    "sd",
-    "fhd",
-    "uhd",
-    "4k",
-    "1080p",
-    "720p",
-]
+# 归一化时移除的噪声词（画质标签等），避免 "CCTV1HD" 与 "CCTV1" 被当成两个频道。
+_CJK_QUALITY_TOKENS = ("高清", "超清", "标清", "蓝光")
+_ASCII_QUALITY_SUFFIX_RE = re.compile(
+    r"(?:[\s\-_]*(?:sd|hd|fhd|uhd|(?:360|480|576|720|1080|1440|2160)[pi]?))+$",
+    re.IGNORECASE,
+)
+_QUALITY_BRACKET_RE = re.compile(
+    r"[\(\[（【]\s*(?:sd|hd|fhd|uhd|4k|8k|"
+    r"(?:360|480|576|720|1080|1440|2160)[pi]?|hevc|h\.?26[45])\s*[\)\]）】]",
+    re.IGNORECASE,
+)
 _IPV6_RE = re.compile(r"\[[0-9a-fA-F:]+\]")
-_FULLWIDTH_MAP = {ord("　"): " "}
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def normalize_key(name: str) -> str:
     """把频道名归一成匹配用的 key：小写、去空白/分隔符/噪声词、全角转半角。"""
-    s = name.strip().translate(_FULLWIDTH_MAP).lower()
-    # 全角数字 -> 半角
-    s = s.translate({c: c - 0xFEE0 for c in range(0xFF10, 0xFF1A)})
-    for token in _NOISE_TOKENS:
+    s = unicodedata.normalize("NFKC", name).strip().lower()
+    s = _QUALITY_BRACKET_RE.sub("", s)
+    for token in _CJK_QUALITY_TOKENS:
         s = s.replace(token, "")
+    s = _ASCII_QUALITY_SUFFIX_RE.sub("", s)
     # 去掉空格与常见分隔符（保留 + 号，如 CCTV5+）
-    s = re.sub(r"[\s\-_·.,、|/\\]", "", s)
+    s = re.sub(r"[\s\-_·.,、|/\\()\[\]{}（）【】]", "", s)
     return s
 
 
@@ -75,19 +73,21 @@ def assign_group(name: str, cfg: Config) -> str:
 def build_channels(streams: list[Stream], cfg: Config) -> list[Channel]:
     """核心聚合：过滤 -> 规范化 -> 跨源去重 -> 按频道聚合 -> 分组 -> 排序。"""
     channels: dict[str, Channel] = {}
-    seen_keys: set[str] = set()
+    seen_streams: dict[str, Stream] = {}
 
     for st in streams:
-        if is_blacklisted(st, cfg):
+        if is_blacklisted(st, cfg) or not is_safe_stream_url(st.url):
             continue
 
         st.name = canonicalize_name(st.raw_name, cfg)
         st.is_ipv6 = is_ipv6_url(st.url)
 
         dk = st.dedup_key()
-        if dk in seen_keys:
+        existing = seen_streams.get(dk)
+        if existing is not None:
+            existing.merge_provenance(st)
             continue
-        seen_keys.add(dk)
+        seen_streams[dk] = st
 
         ch = channels.get(st.name)
         if ch is None:

@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 iptv-pipeline = "iptv_pipeline.main:main"
+iptv-pipeline-ci = "iptv_pipeline.ci:main"
 
 [dependency-groups]
 dev = [

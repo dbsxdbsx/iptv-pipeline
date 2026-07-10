@@ -4,73 +4,252 @@ on:
   schedule:
     # 每 6 小时（UTC）：00/06/12/18 点。北京时间 08/14/20/02。
     - cron: "0 */6 * * *"
-  workflow_dispatch: {}  # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      approve_bootstrap:
+        description: "仅首次从旧 output 迁移时允许缺少 state/meta/manifest"
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
       - "config/**"
       - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/update.yml"
 
-# 同一时刻只跑一个，避免 output 分支 force-push 打架
+# 新一轮候选比旧一轮更有价值；取消尚未发布的旧验证，避免排队与 output 竞争。
 concurrency:
   group: update-live-sources
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: 检出 main
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: 安装 uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
 
       - name: 安装依赖
         run: uv sync --frozen
 
-      - name: 跑测试
-        run: uv run pytest -q
-
-      - name: 运行管道（聚合 + 验证）
-        run: uv run iptv-pipeline --output dist-output --state state/health.json
-
-      - name: 回写健康状态到 main（顺带保活定时任务）
+      - name: 测试与 lint
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain state/)" ]; then
-            git add state/
-            git commit -m "chore(state): 更新直播源健康状态 [skip ci]"
-            git push
+          uv run pytest -q
+          uv run ruff check src tests
+
+      - name: 读取上一代状态
+        env:
+          APPROVE_BOOTSTRAP: ${{ inputs.approve_bootstrap || false }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-work
+          base_sha="$(git ls-remote origin refs/heads/output | cut -f1)"
+          printf '%s' "${base_sha}" > ci-work/base-output-sha.txt
+          if [ -z "${base_sha}" ]; then
+            printf '0' > ci-work/previous-state-present.txt
+            printf '{"entries":{}}' > ci-work/health.json
+            printf '{}' > ci-work/previous-meta.json
+            printf '{}' > ci-work/previous-manifest.json
           else
-            echo "健康状态无变化，跳过提交"
+            git fetch origin "${base_sha}" --depth=1
+            if git show "${base_sha}:.state/health.json" > ci-work/health.json \
+              && git show "${base_sha}:meta.json" > ci-work/previous-meta.json \
+              && git show "${base_sha}:manifest.json" > ci-work/previous-manifest.json; then
+              printf '1' > ci-work/previous-state-present.txt
+            elif [ "${APPROVE_BOOTSTRAP}" = "true" ]; then
+              echo "已明确批准从旧版 output 引导严格状态"
+              printf '0' > ci-work/previous-state-present.txt
+              printf '{"entries":{}}' > ci-work/health.json
+              printf '{}' > ci-work/previous-meta.json
+              printf '{}' > ci-work/previous-manifest.json
+            else
+              echo "output 已存在但严格状态不完整；请手动触发并勾选 approve_bootstrap"
+              exit 1
+            fi
           fi
 
-      - name: 发布产物到 output 分支（force-push 单提交，避免历史膨胀）
+      - name: 隔离候选准备网络
         run: |
+          set -euo pipefail
+          sudo iptables -I OUTPUT 1 -d 127.0.0.0/8 -p udp --dport 53 -j ACCEPT
+          sudo iptables -I OUTPUT 2 -d 127.0.0.0/8 -p tcp --dport 53 -j ACCEPT
+          for cidr in \
+            0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 \
+            169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 \
+            198.18.0.0/15 224.0.0.0/4 240.0.0.0/4; do
+            sudo iptables -A OUTPUT -d "${cidr}" -j REJECT
+          done
+          for cidr in ::/128 ::1/128 fc00::/7 fe80::/10 ff00::/8; do
+            sudo ip6tables -A OUTPUT -d "${cidr}" -j REJECT
+          done
+
+      - name: 拉取、归一化与全线路 L0 快筛
+        run: |
+          uv run iptv-pipeline-ci prepare \
+            --config config \
+            --bundle ci-work/candidates.json
+
+      - name: 上传候选与上一代状态
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: prepared-candidates
+          path: ci-work/
+          retention-days: 1
+          if-no-files-found: error
+
+  verify:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: 检出验证代码
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+
+      - name: 安装 Python 依赖与 FFmpeg
+        run: |
+          uv sync --frozen
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: 下载候选
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prepared-candidates
+          path: ci-work
+
+      - name: 隔离媒体探测网络
+        run: |
+          set -euo pipefail
+          sudo iptables -I OUTPUT 1 -d 127.0.0.0/8 -p udp --dport 53 -j ACCEPT
+          sudo iptables -I OUTPUT 2 -d 127.0.0.0/8 -p tcp --dport 53 -j ACCEPT
+          for cidr in \
+            0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 \
+            169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 \
+            198.18.0.0/15 224.0.0.0/4 240.0.0.0/4; do
+            sudo iptables -A OUTPUT -d "${cidr}" -j REJECT
+          done
+          for cidr in ::/128 ::1/128 fc00::/7 fe80::/10 ff00::/8; do
+            sudo ip6tables -A OUTPUT -d "${cidr}" -j REJECT
+          done
+
+      - name: FFprobe + FFmpeg 分片深验
+        run: |
+          uv run iptv-pipeline-ci verify \
+            --config config \
+            --bundle ci-work/candidates.json \
+            --output "ci-results/deep-results-${{ matrix.shard }}.json" \
+            --shard-index "${{ matrix.shard }}" \
+            --shard-count 4
+
+      - name: 上传深验结果
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deep-results-${{ matrix.shard }}
+          path: ci-results/
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: 检出发布代码
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+
+      - name: 安装依赖
+        run: uv sync --frozen
+
+      - name: 下载候选与状态
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: prepared-candidates
+          path: ci-work
+
+      - name: 下载全部深验结果
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: deep-results-*
+          path: ci-results
+          merge-multiple: true
+
+      - name: 合并状态并执行质量门禁
+        run: |
+          uv run iptv-pipeline-ci publish \
+            --config config \
+            --bundle ci-work/candidates.json \
+            --results-dir ci-results \
+            --state ci-work/health.json \
+            --previous-meta ci-work/previous-meta.json \
+            --previous-manifest ci-work/previous-manifest.json \
+            --base-output-sha ci-work/base-output-sha.txt \
+            --previous-state-present ci-work/previous-state-present.txt \
+            --output dist-output \
+            --network-vantage github-hosted
+
+      - name: 原子发布 output 分支
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          expected_sha="$(<ci-work/base-output-sha.txt)"
+          generation="$(uv run python -c 'import json; print(json.load(open("dist-output/manifest.json", encoding="utf-8"))["generation"])')"
           cd dist-output
           git init -q
-          git checkout -b output
+          git checkout -q -b output
           git add -A
           git -c user.name="github-actions[bot]" \
               -c user.email="github-actions[bot]@users.noreply.github.com" \
-              commit -q -m "chore(output): 直播源产物更新于 $(date -u +'%Y-%m-%d %H:%M UTC')"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" output
+              commit -q -m "chore(output): 发布严格直播源 ${generation}"
+          git push \
+            --force-with-lease="refs/heads/output:${expected_sha}" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" \
+            HEAD:output
 
       - name: 汇总
         run: |
-          echo "### 直播源更新完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 严格直播源更新完成" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "产物分支：\`output\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          wc -l dist-output/*.m3u dist-output/*.txt >> "$GITHUB_STEP_SUMMARY"
+          uv run python -c 'import json; m=json.load(open("dist-output/meta.json", encoding="utf-8")); print(json.dumps(m["stats"], ensure_ascii=False, indent=2))' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

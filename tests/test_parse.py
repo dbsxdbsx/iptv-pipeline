@@ -58,3 +58,45 @@ def test_parse_txt_skips_genre_and_malformed():
 def test_parse_content_auto_detects_format():
     assert len(parse_content(M3U_SAMPLE, "s")) == 2
     assert len(parse_content(TXT_SAMPLE, "s")) == 4
+
+
+def test_parse_m3u_preserves_safe_headers_and_rejects_credentials():
+    content = """#EXTM3U
+#EXTINF:-1 http-user-agent="AttrUA" group-title="国际",Header Test
+#EXTVLCOPT:http-referrer=https://example.com/
+#EXTHTTP:{"Origin":"https://example.com","Cookie":"private=1","Authorization":"Bearer x"}
+https://media.example/live.m3u8
+"""
+    streams = parse_m3u(content, source="headers")
+
+    assert len(streams) == 1
+    assert streams[0].headers == {
+        "User-Agent": "AttrUA",
+        "Referer": "https://example.com/",
+        "Origin": "https://example.com",
+    }
+
+
+def test_parse_m3u_pipe_headers_override_directives():
+    content = """#EXTM3U
+#EXTINF:-1,Pipe Header
+#EXTVLCOPT:http-user-agent=OldUA
+https://media.example/live.m3u8|User-Agent=NewUA&Referer=https%3A%2F%2Fref.example%2F
+"""
+    stream = parse_m3u(content, source="pipe")[0]
+
+    assert stream.url == "https://media.example/live.m3u8"
+    assert stream.headers == {
+        "User-Agent": "NewUA",
+        "Referer": "https://ref.example/",
+    }
+
+
+def test_parse_header_rejects_newline_injection():
+    content = """#EXTM3U
+#EXTINF:-1,Unsafe Header
+#EXTHTTP:{"User-Agent":"safe\\r\\nX-Evil: injected"}
+https://media.example/live.m3u8
+"""
+    stream = parse_m3u(content, source="unsafe")[0]
+    assert stream.headers == {}
