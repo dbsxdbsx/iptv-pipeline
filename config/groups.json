@@ -1,0 +1,30 @@
+{
+  "_comment": "分组映射。产出 m3u 时按此把频道归入 group-title。规则：按 order 顺序，第一个匹配上的分组胜出（match 里的关键字命中规范名即算匹配）。都不匹配则归入 default_group。分组内频道顺序：先按本表出现的规范名顺序，未列出的按自然排序追加。",
+  "default_group": "其他",
+  "order": ["央视", "卫视", "港澳台", "国际", "其他"],
+  "groups": {
+    "央视": {
+      "match": ["cctv", "央视", "中央"],
+      "priority_names": [
+        "CCTV-1", "CCTV-2", "CCTV-3", "CCTV-4", "CCTV-5", "CCTV-5+",
+        "CCTV-6", "CCTV-7", "CCTV-8", "CCTV-9", "CCTV-10", "CCTV-11",
+        "CCTV-12", "CCTV-13", "CCTV-14", "CCTV-15", "CCTV-16", "CCTV-17"
+      ]
+    },
+    "卫视": {
+      "match": ["卫视"],
+      "priority_names": [
+        "湖南卫视", "浙江卫视", "东方卫视", "江苏卫视", "北京卫视",
+        "广东卫视", "深圳卫视", "东南卫视", "山东卫视", "安徽卫视"
+      ]
+    },
+    "港澳台": {
+      "match": ["凤凰", "翡翠", "tvb", "香港", "澳门", "台湾", "中天", "东森", "民视", "华视", "台视"],
+      "priority_names": ["凤凰中文台", "凤凰资讯台", "凤凰香港台", "翡翠台"]
+    },
+    "国际": {
+      "match": ["cnn", "bbc", "nhk", "fox", "hbo", "discovery", "cgtn", "al jazeera", "euronews", "france", "dw", "arirang"],
+      "priority_names": []
+    }
+  }
+}

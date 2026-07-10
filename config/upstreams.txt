@@ -1,0 +1,27 @@
+# 上游成品直播源列表（每行一个 URL）
+# 这些都是"别人已经跑好的聚合管道"的产物，本项目做的是"聚合聚合器"：
+# 拉取 -> 解析 -> 归一化 -> 交叉去重 -> 验证 -> 统一产出。
+#
+# 语法：
+#   - 每行一个 http(s) URL，指向 .m3u / .m3u8 播放列表或 .txt(#genre#) 列表
+#   - 以 # 开头的行是注释；行尾也可用 " #注释" 附注（URL 中不含空格）
+#   - 空行忽略
+#
+# 维护建议：某个上游长期失效时，在其行首加 # 停用而非直接删除，方便日后恢复。
+
+# ---- 国内（央视/卫视/地方台，GitHub 自动更新型）----
+https://raw.githubusercontent.com/bjzhou/iptv-collector/output/iptv.m3u   # 我们 App 现内置源，ffmpeg 深测型
+https://live.zbds.top/tv/iptv4.m3u                                        # vbskycn，服务器每 6h 扫描验证
+https://live.fanmingming.cn/tv/m3u/ipv6.m3u                               # fanmingming，台标事实标准
+https://raw.githubusercontent.com/YueChan/Live/main/APTV.m3u              # YueChan 聚合
+https://raw.githubusercontent.com/Kimentanm/aptv/master/m3u/iptv.m3u      # Kimentanm aptv
+
+# ---- 港澳台 ----
+https://raw.githubusercontent.com/suxuang/myIPTV/main/ipv4.m3u            # suxuang 典藏版，港澳台较全
+http://aktv.space/live.m3u                                               # AKTV，港台专项
+
+# ---- 国际（iptv-org 全球库，按语言/分类取子集，降低体积）----
+https://iptv-org.github.io/iptv/languages/zho.m3u                         # 中文频道
+https://iptv-org.github.io/iptv/categories/news.m3u                       # 国际新闻
+https://iptv-org.github.io/iptv/categories/sports.m3u                     # 国际体育
+https://iptv-org.github.io/iptv/categories/movies.m3u                     # 国际电影

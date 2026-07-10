@@ -1,0 +1,76 @@
+name: 更新直播源
+
+on:
+  schedule:
+    # 每 6 小时（UTC）：00/06/12/18 点。北京时间 08/14/20/02。
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}  # 支持手动触发
+  push:
+    branches: [main]
+    paths:
+      - "config/**"
+      - "src/**"
+      - ".github/workflows/update.yml"
+
+# 同一时刻只跑一个，避免 output 分支 force-push 打架
+concurrency:
+  group: update-live-sources
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出 main
+        uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 安装依赖
+        run: uv sync --frozen
+
+      - name: 跑测试
+        run: uv run pytest -q
+
+      - name: 运行管道（聚合 + 验证）
+        run: uv run iptv-pipeline --output dist-output --state state/health.json
+
+      - name: 回写健康状态到 main（顺带保活定时任务）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain state/)" ]; then
+            git add state/
+            git commit -m "chore(state): 更新直播源健康状态 [skip ci]"
+            git push
+          else
+            echo "健康状态无变化，跳过提交"
+          fi
+
+      - name: 发布产物到 output 分支（force-push 单提交，避免历史膨胀）
+        run: |
+          cd dist-output
+          git init -q
+          git checkout -b output
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "chore(output): 直播源产物更新于 $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" output
+
+      - name: 汇总
+        run: |
+          echo "### 直播源更新完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "产物分支：\`output\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          wc -l dist-output/*.m3u dist-output/*.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

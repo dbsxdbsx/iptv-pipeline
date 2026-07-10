@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv
+# 保留 uv.lock 以锁定依赖，不忽略
+
+# 本地产出（CI 会 push 到 output 分支，主分支不跟踪产物）
+/dist-output/
+/output/
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
+.DS_Store
