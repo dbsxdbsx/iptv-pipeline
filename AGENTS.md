@@ -29,7 +29,7 @@ uv run ruff format src tests     # 格式化
 
 ```text
 config/upstreams.txt → fetch → parse(headers/m3u/txt) → normalize
-  → probe(L0全线路) → CI只读分片 deep_probe(FFprobe+FFmpeg)
+  → probe(L0全线路) → CI只读分片 deep_probe(FFprobe+FFmpeg+GStreamer)
   → state(PASS/GRACE/REJECT) → rank(每频道最多2条)
   → emit(stable/all/meta/manifest) → [质量门禁] → output 单提交
 ```
@@ -39,9 +39,10 @@ config/upstreams.txt → fetch → parse(headers/m3u/txt) → normalize
 ## Conventions
 
 - **双轨不变式**：`all` 可宽松保留候选，但 `stable` 只能包含本轮 PASS 或最近 12 小时内、最多连续两轮的基础设施软失败 GRACE。4xx、格式或解码失败必须立即退出 stable。
-- **验证边界**：`stable` 只表示 GitHub runner 的 FFmpeg 可解码；不可写成 GStreamer/国内运营商“保证可播”。未验证 IPv6/非 HTTP 流不得进入 stable。
+- **验证边界**：`stable` 表示 GitHub runner 的 FFmpeg 可解码；无自定义请求头时还须通过 GStreamer discoverer。不可写成 Windows/Android/国内运营商“保证可播”。未验证 IPv6/非 HTTP 流不得进入 stable。
 - **产物契约**：App 只消费 `stable.m3u`；`all.m3u`/`all.txt` 仅诊断。`cn.m3u`/`global.m3u` 从 stable 派生；所有产物与 `meta.json`、`.state/health.json` 必须共享同一 generation。
 - **原子发布**：状态只放 output 分支；验证 job 无写权限。质量门禁失败时 output SHA 必须不变，更新必须使用代际校验/`force-with-lease`，禁止盲目 force-push。
+- **验证 scope 不变式**：改变严格准入定义必须同步升级 `VALIDATION_SCOPE`；旧 PASS/GRACE 不得跨 scope 宽限，首轮基线只能通过手动 workflow 的 `approve_quality_scope_migration` 显式批准。
 - **公共头安全**：只透传 UA/Referer/Origin/Accept 类头，禁止 Cookie、Authorization、CR/LF 进入产物或日志；FFmpeg 命令不得拼 shell 字符串。
 - **网络隔离**：CI 的 prepare/verify 必须在无凭据容器内运行，并通过 `DOCKER-USER` 阻断私网、metadata、组播目标；禁止改回 host `OUTPUT` 防火墙（会切断 Actions runner 心跳）。
 - **别名表** `config/aliases.json` 是唯一需要人工边跑边补的「脏活」。新增频道归并写这里，不要硬编码进代码。

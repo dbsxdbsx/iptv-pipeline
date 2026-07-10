@@ -6,6 +6,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+VALIDATION_SCOPE = "ffmpeg-gstreamer-headerless-v1"
+
 
 def _strip_inline_comment(line: str) -> str:
     """去掉行尾 ' #注释'（要求 # 前有空白），保留 URL 中的 #。"""
@@ -38,9 +40,11 @@ class GroupRule:
 @dataclass(frozen=True)
 class ValidationConfig:
     fast_timeout_seconds: int = 8
-    deep_timeout_seconds: int = 20
+    deep_timeout_seconds: int = 15
     decode_seconds: int = 4
     deep_concurrency: int = 4
+    gstreamer_timeout_seconds: int = 12
+    require_gstreamer: bool = True
     stable_max_per_channel: int = 2
     grace_hours: int = 12
     grace_rounds: int = 2
@@ -128,9 +132,11 @@ def _load_validation(path: Path) -> ValidationConfig:
     data = json.loads(path.read_text(encoding="utf-8"))
     return ValidationConfig(
         fast_timeout_seconds=max(1, int(data.get("fast_timeout_seconds", 8))),
-        deep_timeout_seconds=max(5, int(data.get("deep_timeout_seconds", 20))),
+        deep_timeout_seconds=max(5, int(data.get("deep_timeout_seconds", 15))),
         decode_seconds=max(2, int(data.get("decode_seconds", 4))),
         deep_concurrency=max(1, min(8, int(data.get("deep_concurrency", 4)))),
+        gstreamer_timeout_seconds=max(5, int(data.get("gstreamer_timeout_seconds", 12))),
+        require_gstreamer=bool(data.get("require_gstreamer", True)),
         stable_max_per_channel=max(1, min(5, int(data.get("stable_max_per_channel", 2)))),
         grace_hours=max(0, int(data.get("grace_hours", 12))),
         grace_rounds=max(0, int(data.get("grace_rounds", 2))),

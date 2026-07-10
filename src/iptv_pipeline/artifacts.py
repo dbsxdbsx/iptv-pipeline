@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from .deep_probe import DeepProbeResult
@@ -10,6 +11,13 @@ from .models import Channel, Stream
 from .probe import ProbeResult
 
 ARTIFACT_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class DeepResultShard:
+    shard_index: int
+    shard_count: int
+    results: dict[str, DeepProbeResult]
 
 
 def write_candidate_bundle(
@@ -59,15 +67,34 @@ def write_deep_results(
     _write_json(path, payload)
 
 
-def read_deep_results(path: Path, expected_generation: str) -> dict[str, DeepProbeResult]:
+def read_deep_results(path: Path, expected_generation: str) -> DeepResultShard:
     payload = _read_json(path)
     _require_schema(payload)
     if payload.get("generation") != expected_generation:
         raise ValueError(f"深验分片 generation 不一致: {path}")
-    return {
+    shard_index = payload.get("shard_index")
+    shard_count = payload.get("shard_count")
+    if (
+        not isinstance(shard_index, int)
+        or isinstance(shard_index, bool)
+        or not isinstance(shard_count, int)
+        or isinstance(shard_count, bool)
+        or shard_count <= 0
+        or not 0 <= shard_index < shard_count
+    ):
+        raise ValueError(f"深验分片元数据无效: {path}")
+    raw_results = payload.get("results")
+    if not isinstance(raw_results, dict):
+        raise ValueError(f"深验分片 results 无效: {path}")
+    results = {
         str(state_key): DeepProbeResult.from_dict(result)
-        for state_key, result in payload.get("results", {}).items()
+        for state_key, result in raw_results.items()
     }
+    return DeepResultShard(
+        shard_index=shard_index,
+        shard_count=shard_count,
+        results=results,
+    )
 
 
 def _stream_to_dict(stream: Stream) -> dict:

@@ -18,7 +18,7 @@ from .artifacts import (
     write_candidate_bundle,
     write_deep_results,
 )
-from .config import Config
+from .config import VALIDATION_SCOPE, Config
 from .deep_probe import probe_all_deep
 from .fetch import fetch_all
 from .models import Channel, Stream
@@ -72,9 +72,11 @@ async def verify(
     shard_index: int,
     shard_count: int,
 ) -> None:
+    cfg = Config.load(config_dir)
     if shutil.which("ffprobe") is None or shutil.which("ffmpeg") is None:
         raise RuntimeError("ffprobe/ffmpeg 未安装")
-    cfg = Config.load(config_dir)
+    if cfg.validation.require_gstreamer and shutil.which("gst-discoverer-1.0") is None:
+        raise RuntimeError("gst-discoverer-1.0 未安装")
     generation, channels, fast_results = read_candidate_bundle(bundle_path)
     candidates = [
         stream
@@ -113,18 +115,19 @@ def publish(
     output_dir: Path,
     *,
     network_vantage: str,
+    approve_quality_scope_migration: bool = False,
+    expected_shard_count: int = 6,
 ) -> None:
     cfg = Config.load(config_dir)
     generation, channels, fast_results = read_candidate_bundle(bundle_path)
-    deep_results = {}
     result_files = sorted(results_dir.rglob("deep-results-*.json"))
     if not result_files:
         raise RuntimeError("未找到深验结果分片")
-    for path in result_files:
-        for state_key, result in read_deep_results(path, generation).items():
-            if state_key in deep_results:
-                raise RuntimeError(f"深验结果重复: {state_key}")
-            deep_results[state_key] = result
+    deep_results = _load_deep_result_shards(
+        result_files,
+        generation,
+        expected_shard_count=expected_shard_count,
+    )
 
     flat = [stream for channel in channels for stream in channel.streams]
     expected_deep = {
@@ -147,6 +150,8 @@ def publish(
         previous_manifest_path,
         has_previous=bool(base_output_sha) and previous_state_present,
     )
+    if state.ensure_validation_scope(VALIDATION_SCOPE):
+        logger.info("验证范围已切换为 %s，旧 strict 准入证据已重置", VALIDATION_SCOPE)
     for stream in flat:
         state_key = stream.state_key()
         fast_result = fast_results[state_key]
@@ -168,6 +173,7 @@ def publish(
         state,
         cfg,
         previous_meta_path,
+        approve_quality_scope_migration=approve_quality_scope_migration,
     )
     write_outputs(
         broad,
@@ -183,6 +189,53 @@ def publish(
         len(stable),
         sum(len(channel.streams) for channel in stable),
     )
+
+
+def _load_deep_result_shards(
+    result_files: list[Path],
+    generation: str,
+    *,
+    expected_shard_count: int,
+) -> dict:
+    if expected_shard_count <= 0:
+        raise ValueError("expected_shard_count 必须大于 0")
+    deep_results = {}
+    seen_indexes: set[int] = set()
+    for path in result_files:
+        shard = read_deep_results(path, generation)
+        if shard.shard_count != expected_shard_count:
+            raise RuntimeError(
+                f"深验分片总数不一致: {path} 声明 {shard.shard_count}, 期望 {expected_shard_count}"
+            )
+        if shard.shard_index in seen_indexes:
+            raise RuntimeError(f"深验分片 index 重复: {shard.shard_index}")
+        expected_name = f"deep-results-{shard.shard_index}.json"
+        if path.name != expected_name:
+            raise RuntimeError(f"深验分片文件名与 index 不一致: {path.name} != {expected_name}")
+        seen_indexes.add(shard.shard_index)
+        for state_key, result in shard.results.items():
+            if len(state_key) != 64:
+                raise RuntimeError(f"深验结果 state key 无效: {state_key}")
+            try:
+                int(state_key, 16)
+                assigned_index = int(state_key[:8], 16) % expected_shard_count
+            except ValueError as exc:
+                raise RuntimeError(f"深验结果 state key 无效: {state_key}") from exc
+            if assigned_index != shard.shard_index:
+                raise RuntimeError(
+                    f"深验结果归属错误: {state_key} 应在分片 {assigned_index}, "
+                    f"实际位于 {shard.shard_index}"
+                )
+            if state_key in deep_results:
+                raise RuntimeError(f"深验结果重复: {state_key}")
+            deep_results[state_key] = result
+
+    expected_indexes = set(range(expected_shard_count))
+    if seen_indexes != expected_indexes:
+        missing = sorted(expected_indexes - seen_indexes)
+        unexpected = sorted(seen_indexes - expected_indexes)
+        raise RuntimeError(f"深验分片集合不完整: missing={missing}, unexpected={unexpected}")
+    return deep_results
 
 
 def _filter_broad_channels(
@@ -213,6 +266,8 @@ def _enforce_quality_gate(
     state: HealthState,
     cfg: Config,
     previous_meta_path: Path,
+    *,
+    approve_quality_scope_migration: bool = False,
 ) -> None:
     channel_count = len(stable)
     stream_keys = [stream.state_key() for channel in stable for stream in channel.streams]
@@ -229,6 +284,21 @@ def _enforce_quality_gate(
     previous_stats = _previous_stable_stats(previous_meta_path)
     previous_count = previous_stats["channels_stable"]
     if previous_count <= 0:
+        return
+    previous_scope = _previous_quality_scope(previous_meta_path)
+    if previous_scope != VALIDATION_SCOPE:
+        old_scope = previous_scope or "legacy-unspecified"
+        if not approve_quality_scope_migration:
+            raise RuntimeError(
+                "质量门禁失败: 验证范围从 "
+                f"{old_scope} 切换到 {VALIDATION_SCOPE}，"
+                "必须显式批准 quality scope 迁移"
+            )
+        logger.warning(
+            "已批准验证范围迁移: %s -> %s；本轮跳过跨 scope 数量跌幅比较",
+            old_scope,
+            VALIDATION_SCOPE,
+        )
         return
     drop_ratio = max(0.0, (previous_count - channel_count) / previous_count)
     if drop_ratio > cfg.validation.maximum_drop_ratio:
@@ -289,6 +359,16 @@ def _previous_stable_stats(path: Path) -> dict[str, int]:
         return empty
 
 
+def _previous_quality_scope(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return str(payload.get("quality_scope", ""))
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        return ""
+
+
 def _read_base_output_sha(path: Path) -> str:
     if not path.exists():
         raise RuntimeError("缺少 base-output-sha.txt")
@@ -329,6 +409,9 @@ def _load_previous_state(
     }
     if "" in generations or len(generations) != 1:
         raise RuntimeError("上一代 state/meta/manifest generation 不一致")
+    meta_scope = str(meta.get("quality_scope", ""))
+    if state.validation_scope and state.validation_scope != meta_scope:
+        raise RuntimeError("上一代 state/meta validation scope 不一致")
     stats = meta.get("stats")
     if not isinstance(stats, dict):
         raise RuntimeError("上一代 meta.stats 缺失")
@@ -373,6 +456,12 @@ def _parser() -> argparse.ArgumentParser:
     publish_parser.add_argument("--previous-state-present", required=True)
     publish_parser.add_argument("--output", required=True)
     publish_parser.add_argument("--network-vantage", default="github-hosted")
+    publish_parser.add_argument("--expected-shard-count", type=int, default=6)
+    publish_parser.add_argument(
+        "--approve-quality-scope-migration",
+        action="store_true",
+        help="显式批准验证定义变化后的首轮基线重建",
+    )
     return parser
 
 
@@ -414,6 +503,8 @@ def main(argv: list[str] | None = None) -> int:
                 Path(args.previous_state_present),
                 Path(args.output),
                 network_vantage=args.network_vantage,
+                approve_quality_scope_migration=(args.approve_quality_scope_migration),
+                expected_shard_count=args.expected_shard_count,
             )
     except (OSError, RuntimeError, ValueError) as exc:
         logger.error("%s", exc)

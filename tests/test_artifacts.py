@@ -47,5 +47,7 @@ def test_candidate_and_deep_result_artifacts_roundtrip(tmp_path):
             )
         },
     )
-    results = read_deep_results(result_path, "g1")
-    assert results[stream.state_key()].status == DeepProbeStatus.PASS
+    shard = read_deep_results(result_path, "g1")
+    assert shard.shard_index == 0
+    assert shard.shard_count == 1
+    assert shard.results[stream.state_key()].status == DeepProbeStatus.PASS

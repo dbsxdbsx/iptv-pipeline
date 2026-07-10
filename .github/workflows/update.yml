@@ -11,6 +11,11 @@ on:
         required: false
         type: boolean
         default: false
+      approve_quality_scope_migration:
+        description: "仅验证定义升级时允许重建 stable 数量基线"
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -87,6 +92,37 @@ jobs:
             fi
           fi
 
+      - name: 预检验证范围迁移审批
+        env:
+          APPROVE_QUALITY_SCOPE_MIGRATION: ${{ inputs.approve_quality_scope_migration || false }}
+        run: |
+          uv run python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from iptv_pipeline.config import VALIDATION_SCOPE
+
+          base_sha = Path("ci-work/base-output-sha.txt").read_text(
+              encoding="utf-8"
+          ).strip()
+          previous_meta = json.loads(
+              Path("ci-work/previous-meta.json").read_text(encoding="utf-8")
+          )
+          previous_scope = str(previous_meta.get("quality_scope", ""))
+          approved = (
+              os.environ.get("APPROVE_QUALITY_SCOPE_MIGRATION", "").lower()
+              == "true"
+          )
+          if base_sha and previous_scope != VALIDATION_SCOPE and not approved:
+              old_scope = previous_scope or "legacy-unspecified"
+              raise SystemExit(
+                  "验证范围迁移需要手动 workflow_dispatch 并批准 "
+                  "approve_quality_scope_migration: "
+                  f"{old_scope} -> {VALIDATION_SCOPE}"
+              )
+          PY
+
       - name: 构建隔离验证器
         run: docker build -t "iptv-pipeline-validator:${GITHUB_SHA}" .
 
@@ -129,9 +165,9 @@ jobs:
       contents: read
     strategy:
       fail-fast: true
-      max-parallel: 4
+      max-parallel: 6
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5]
     steps:
       - name: 检出验证代码
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -161,7 +197,7 @@ jobs:
               -i docker0 -d "${cidr}" -j REJECT
           done
 
-      - name: FFprobe + FFmpeg 分片深验
+      - name: FFprobe + FFmpeg + GStreamer 分片深验
         run: |
           mkdir -p ci-results
           docker run --rm \
@@ -175,7 +211,7 @@ jobs:
             --bundle /data/candidates.json \
             --output "/results/deep-results-${{ matrix.shard }}.json" \
             --shard-index "${{ matrix.shard }}" \
-            --shard-count 4
+            --shard-count 6
 
       - name: 上传深验结果
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -217,18 +253,27 @@ jobs:
           merge-multiple: true
 
       - name: 合并状态并执行质量门禁
+        env:
+          APPROVE_QUALITY_SCOPE_MIGRATION: ${{ inputs.approve_quality_scope_migration || false }}
         run: |
-          uv run iptv-pipeline-ci publish \
-            --config config \
-            --bundle ci-work/candidates.json \
-            --results-dir ci-results \
-            --state ci-work/health.json \
-            --previous-meta ci-work/previous-meta.json \
-            --previous-manifest ci-work/previous-manifest.json \
-            --base-output-sha ci-work/base-output-sha.txt \
-            --previous-state-present ci-work/previous-state-present.txt \
-            --output dist-output \
+          set -euo pipefail
+          publish_args=(
+            --config config
+            --bundle ci-work/candidates.json
+            --results-dir ci-results
+            --state ci-work/health.json
+            --previous-meta ci-work/previous-meta.json
+            --previous-manifest ci-work/previous-manifest.json
+            --base-output-sha ci-work/base-output-sha.txt
+            --previous-state-present ci-work/previous-state-present.txt
+            --output dist-output
             --network-vantage github-hosted
+            --expected-shard-count 6
+          )
+          if [ "${APPROVE_QUALITY_SCOPE_MIGRATION}" = "true" ]; then
+            publish_args+=(--approve-quality-scope-migration)
+          fi
+          uv run iptv-pipeline-ci publish "${publish_args[@]}"
 
       - name: 原子发布 output 分支
         env:

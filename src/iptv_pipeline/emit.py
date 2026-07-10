@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from .config import VALIDATION_SCOPE
 from .models import Channel
 from .safety import sanitize_headers
 from .state import HealthState
@@ -99,6 +100,8 @@ def to_meta_json(
                     "height": int(entry.get("height", 0) or 0),
                     "decoded_frames": int(entry.get("decoded_frames", 0) or 0),
                     "freeze_detected": bool(entry.get("freeze_detected", False)),
+                    "gstreamer_compatible": entry.get("gstreamer_compatible"),
+                    "gstreamer_reason": entry.get("gstreamer_reason", ""),
                     "is_ipv6": stream.is_ipv6,
                 }
             )
@@ -108,7 +111,7 @@ def to_meta_json(
         "generation": generation,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "network_vantage": network_vantage,
-        "quality_scope": "ffmpeg_decodable_from_runner",
+        "quality_scope": VALIDATION_SCOPE,
         "stats": {
             "channels_all": len(all_channels),
             "streams_all": sum(len(channel.streams) for channel in all_channels),

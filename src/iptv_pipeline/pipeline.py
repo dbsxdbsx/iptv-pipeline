@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import Config
+from .config import VALIDATION_SCOPE, Config
 from .deep_probe import DeepProbeStatus, probe_all_deep
 from .emit import to_m3u, to_meta_json, to_txt
 from .fetch import fetch_all
@@ -75,6 +75,8 @@ async def run_pipeline(
     stats.channels = len(all_channels)
 
     state = HealthState.load(state_path)
+    if state.ensure_validation_scope(VALIDATION_SCOPE):
+        logger.info("验证范围已切换为 %s，旧 strict 准入证据已重置", VALIDATION_SCOPE)
     stable_channels: list[Channel] = []
 
     # 4) 快筛 + 深验：all 宽松，stable 正向准入

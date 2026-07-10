@@ -30,6 +30,7 @@ class HealthState:
     #: state_key -> 健康与深验信息
     entries: dict[str, dict] = field(default_factory=dict)
     generation: str = ""
+    validation_scope: str = ""
 
     @classmethod
     def load(cls, path: Path, *, strict: bool = False) -> HealthState:
@@ -46,6 +47,7 @@ class HealthState:
             return cls(
                 entries=data.get("entries", {}),
                 generation=str(data.get("generation", "")),
+                validation_scope=str(data.get("validation_scope", "")),
             )
         except (json.JSONDecodeError, OSError, ValueError):
             if strict:
@@ -57,6 +59,7 @@ class HealthState:
         payload = {
             "schema_version": STATE_SCHEMA_VERSION,
             "generation": self.generation,
+            "validation_scope": self.validation_scope,
             "updated_at": time.time(),
             "entries": self.entries,
         }
@@ -115,6 +118,8 @@ class HealthState:
                 "duration_seconds": result.duration_seconds,
                 "decoded_frames": result.decoded_frames,
                 "freeze_detected": result.freeze_detected,
+                "gstreamer_compatible": result.gstreamer_compatible,
+                "gstreamer_reason": result.gstreamer_reason,
             }
         )
         if result.status == DeepProbeStatus.PASS:
@@ -163,6 +168,38 @@ class HealthState:
 
     def set_source_count(self, state_key: str, count: int) -> None:
         self._entry(state_key)["source_count"] = max(1, count)
+
+    def ensure_validation_scope(self, scope: str) -> bool:
+        """验证定义变化时清除旧的 strict 准入证据。
+
+        broad 快筛的连续失败历史仍可沿用；旧 scope 的 PASS/GRACE 不能为新门禁
+        提供宽限，否则从 FFmpeg-only 升级到 GStreamer 时会误放行未通过新门禁的线路。
+        """
+        if self.validation_scope == scope:
+            return False
+        for entry in self.entries.values():
+            entry["tier"] = TIER_UNVERIFIED
+            entry["grace_rounds"] = 0
+            entry["last_deep_ok"] = 0.0
+            entry["deep_successes"] = 0
+            entry["freeze_streak"] = 0
+            for key in (
+                "last_deep_checked",
+                "last_deep_status",
+                "deep_reason",
+                "latency_ms",
+                "codec",
+                "width",
+                "height",
+                "duration_seconds",
+                "decoded_frames",
+                "freeze_detected",
+                "gstreamer_compatible",
+                "gstreamer_reason",
+            ):
+                entry.pop(key, None)
+        self.validation_scope = scope
+        return True
 
     def _entry(self, state_key: str) -> dict:
         return self.entries.setdefault(

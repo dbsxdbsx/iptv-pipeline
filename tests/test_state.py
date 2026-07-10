@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from iptv_pipeline.config import ValidationConfig
+from iptv_pipeline.config import VALIDATION_SCOPE, ValidationConfig
 from iptv_pipeline.deep_probe import DeepProbeResult, DeepProbeStatus
 from iptv_pipeline.probe import ProbeResult
 from iptv_pipeline.state import (
@@ -63,12 +63,13 @@ def test_prune_stale_removes_absent_keys():
 
 def test_save_and_load_roundtrip(tmp_path: Path):
     p = tmp_path / "health.json"
-    st = HealthState(generation="g1")
+    st = HealthState(generation="g1", validation_scope=VALIDATION_SCOPE)
     st.update("a\thttp://x/1", ProbeResult.HARD_FAIL)
     st.save(p)
     loaded = HealthState.load(p)
     assert loaded.entries["a\thttp://x/1"]["hard_streak"] == 1
     assert loaded.generation == "g1"
+    assert loaded.validation_scope == VALIDATION_SCOPE
 
 
 def test_load_missing_file_returns_empty(tmp_path: Path):
@@ -153,3 +154,26 @@ def test_hard_failure_immediately_removes_stable_entry():
 
     assert state.stable_tier(key) == TIER_REJECT
     assert not state.is_stable_eligible(key)
+
+
+def test_validation_scope_change_resets_old_strict_evidence():
+    state = HealthState(validation_scope="ffmpeg-only-v1")
+    config = ValidationConfig()
+    key = "sha256-key"
+    state.apply_deep_result(
+        key,
+        DeepProbeResult(
+            DeepProbeStatus.PASS,
+            "decoded",
+            checked_at=1000.0,
+            decoded_frames=10,
+        ),
+        config,
+    )
+
+    assert state.ensure_validation_scope(VALIDATION_SCOPE)
+    assert state.validation_scope == VALIDATION_SCOPE
+    assert state.stable_tier(key) == TIER_UNVERIFIED
+    assert state.entries[key]["last_deep_ok"] == 0.0
+    assert not state.is_stable_eligible(key)
+    assert not state.ensure_validation_scope(VALIDATION_SCOPE)
