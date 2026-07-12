@@ -310,8 +310,9 @@ async def _probe_gstreamer(
     if not config.require_gstreamer:
         return DeepProbeStatus.PASS, "gstreamer_disabled", None
     if sanitize_headers(stream.headers):
-        # gst-discoverer CLI 无法安全注入 HLS 子请求头；App playbin 会注入，避免假阴性。
-        return DeepProbeStatus.PASS, "gstreamer_skipped_custom_headers", None
+        # gst-discoverer CLI 无法安全注入 HLS 子请求头。strict stable 必须 fail closed；
+        # 这些线路保留在 all，待有等价于 App source-setup 的验证器后再准入。
+        return DeepProbeStatus.HARD_FAIL, "gstreamer_custom_headers_unsupported", None
 
     gstreamer_binary = _find_gstreamer_discoverer()
     if gstreamer_binary is None:

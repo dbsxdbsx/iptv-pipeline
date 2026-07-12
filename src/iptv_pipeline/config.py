@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VALIDATION_SCOPE = "ffmpeg-gstreamer-headerless-v1"
+VALIDATION_SCOPE = "ffmpeg5.1.9-gstreamer1.22-headerless-only-v1"  # 与 Dockerfile 同步
 
 
 def _strip_inline_comment(line: str) -> str:

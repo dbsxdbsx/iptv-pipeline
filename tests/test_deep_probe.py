@@ -51,12 +51,12 @@ def test_deep_probe_requires_metadata_and_decoded_frames(monkeypatch):
 
     result = asyncio.run(probe_stream(stream, _config()))
 
-    assert result.status == DeepProbeStatus.PASS
+    assert result.status == DeepProbeStatus.HARD_FAIL
     assert result.codec == "h264"
     assert result.decoded_frames == 18
     assert result.freeze_detected
     assert result.gstreamer_compatible is None
-    assert result.reason == "decoded_gstreamer_not_applicable"
+    assert result.reason == "gstreamer_custom_headers_unsupported"
     commands = "\n".join(" ".join(command) for command in calls)
     assert "DemoPlayer/1.0" in commands
     assert "Referer: https://example.com/" in commands

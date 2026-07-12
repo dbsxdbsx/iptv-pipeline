@@ -39,7 +39,8 @@ config/upstreams.txt → fetch → parse(headers/m3u/txt) → normalize
 ## Conventions
 
 - **双轨不变式**：`all` 可宽松保留候选，但 `stable` 只能包含本轮 PASS 或最近 12 小时内、最多连续两轮的基础设施软失败 GRACE。4xx、格式或解码失败必须立即退出 stable。
-- **验证边界**：`stable` 表示 GitHub runner 的 FFmpeg 可解码；无自定义请求头时还须通过 GStreamer discoverer。不可写成 Windows/Android/国内运营商“保证可播”。未验证 IPv6/非 HTTP 流不得进入 stable。
+- **验证边界**：`stable` 表示 GitHub runner 的 FFmpeg 可解码且通过 GStreamer discoverer；当前无法等价注入 HLS 子请求头的线路必须 fail closed，仅留在 `all`。不可写成 Windows/Android/国内运营商“保证可播”。未验证 IPv6/非 HTTP 流不得进入 stable。
+- **工具链范围**：验证镜像必须固定基础镜像 digest 与 FFmpeg/GStreamer 直接包版本；任何版本升级都必须同步升级 `VALIDATION_SCOPE`，使旧 PASS/GRACE 自动失效。
 - **产物契约**：App 只消费 `stable.m3u`；`all.m3u`/`all.txt` 仅诊断。`cn.m3u`/`global.m3u` 从 stable 派生；所有产物与 `meta.json`、`.state/health.json` 必须共享同一 generation。
 - **原子发布**：状态只放 output 分支；验证 job 无写权限。质量门禁失败时 output SHA 必须不变，更新必须使用代际校验/`force-with-lease`，禁止盲目 force-push。
 - **验证 scope 不变式**：改变严格准入定义必须同步升级 `VALIDATION_SCOPE`；旧 PASS/GRACE 不得跨 scope 宽限，首轮基线只能通过手动 workflow 的 `approve_quality_scope_migration` 显式批准。
