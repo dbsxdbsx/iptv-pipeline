@@ -29,6 +29,48 @@ _GSTREAMER_VIDEO_RE = re.compile(
     r"^\s*video(?:\s+#\d+)?\s*:",
     re.IGNORECASE | re.MULTILINE,
 )
+_GSTREAMER_SOFT_FAILURE_MARKERS = (
+    "timed out",
+    "timeout",
+    "temporarily unavailable",
+    "temporary failure in name resolution",
+    "resource temporarily unavailable",
+    "connection reset",
+    "connection refused",
+    "connection aborted",
+    "connection closed",
+    "connection terminated",
+    "could not resolve server name",
+    "could not resolve host",
+    "failed to connect",
+    "host is unreachable",
+    "network is unreachable",
+    "name or service not known",
+    "no address associated",
+    "socket closed",
+    "unexpected eof",
+    "too many requests",
+    "server returned 429",
+    "server returned 5",
+    "http error 5",
+    "service unavailable",
+)
+_GSTREAMER_HARD_FAILURE_MARKERS = (
+    "missing plugin",
+    "missing-plugin",
+    "no suitable plugins",
+    "not-negotiated",
+    "invalid uri",
+    "could not discover",
+    "an error was encountered",
+    "error was encountered",
+    "internal data stream error",
+    "stream contains no data",
+    "could not open resource",
+    "resource not found",
+    "server returned 4",
+    "http error 4",
+)
 
 
 class DeepProbeStatus(str, Enum):
@@ -231,36 +273,22 @@ def _failure_status(stderr: str) -> tuple[DeepProbeStatus, str]:
 
 def _gstreamer_failure_status(output: str) -> tuple[DeepProbeStatus, str]:
     """FFmpeg 已通过后，GStreamer 未知失败默认视为兼容性硬失败。"""
-    text = output.lower()
-    soft_markers = (
-        "timed out",
-        "timeout",
-        "temporarily unavailable",
-        "temporary failure in name resolution",
-        "resource temporarily unavailable",
-        "connection reset",
-        "connection refused",
-        "connection aborted",
-        "connection closed",
-        "connection terminated",
-        "could not resolve server name",
-        "could not resolve host",
-        "failed to connect",
-        "host is unreachable",
-        "network is unreachable",
-        "name or service not known",
-        "no address associated",
-        "socket closed",
-        "unexpected eof",
-        "too many requests",
-        "server returned 429",
-        "server returned 5",
-        "http error 5",
-        "service unavailable",
+    return _gstreamer_reported_failure_status(output) or (
+        DeepProbeStatus.HARD_FAIL,
+        "incompatible_or_media_error",
     )
-    if any(marker in text for marker in soft_markers):
+
+
+def _gstreamer_reported_failure_status(
+    output: str,
+) -> tuple[DeepProbeStatus, str] | None:
+    """识别 discoverer 文本中的失败；成功输出返回 None。"""
+    text = output.lower()
+    if any(marker in text for marker in _GSTREAMER_SOFT_FAILURE_MARKERS):
         return DeepProbeStatus.SOFT_FAIL, "network_timeout"
-    return DeepProbeStatus.HARD_FAIL, "incompatible_or_media_error"
+    if any(marker in text for marker in _GSTREAMER_HARD_FAILURE_MARKERS):
+        return DeepProbeStatus.HARD_FAIL, "incompatible_or_media_error"
+    return None
 
 
 def _parse_probe_json(stdout: str) -> tuple[dict, str | None]:
@@ -325,16 +353,22 @@ async def _probe_gstreamer(
     ]
     result = await _run_process(command, config.gstreamer_timeout_seconds + 5)
     if result.timed_out:
-        return DeepProbeStatus.SOFT_FAIL, "gstreamer_timeout", False
+        return DeepProbeStatus.SOFT_FAIL, "gstreamer_timeout", None
     if result.returncode == 127:
         return DeepProbeStatus.UNSUPPORTED, "gstreamer_missing", None
     combined = f"{result.stdout}\n{result.stderr}"
-    if result.returncode != 0:
-        status, reason = _gstreamer_failure_status(combined)
-        return status, f"gstreamer_{reason}", False
     lowered = combined.lower()
     if "missing plugin" in lowered or "missing-plugin" in lowered:
         return DeepProbeStatus.HARD_FAIL, "gstreamer_missing_plugin", False
+    reported_failure = _gstreamer_reported_failure_status(combined)
+    if reported_failure is not None:
+        status, reason = reported_failure
+        compatible = False if status == DeepProbeStatus.HARD_FAIL else None
+        return status, f"gstreamer_{reason}", compatible
+    if result.returncode != 0:
+        status, reason = _gstreamer_failure_status(combined)
+        compatible = False if status == DeepProbeStatus.HARD_FAIL else None
+        return status, f"gstreamer_{reason}", compatible
     if _GSTREAMER_VIDEO_RE.search(combined) is None:
         return DeepProbeStatus.HARD_FAIL, "gstreamer_no_video", False
     return DeepProbeStatus.PASS, "gstreamer_discovered", True

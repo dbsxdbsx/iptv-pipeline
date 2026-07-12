@@ -211,7 +211,59 @@ def test_gstreamer_rejects_success_exit_with_missing_plugin(monkeypatch):
     assert compatible is False
 
 
+def test_gstreamer_treats_zero_exit_timeout_as_soft_unknown(monkeypatch):
+    async def fake_run(command: list[str], timeout_seconds: int):
+        return deep_probe._ProcessResult(
+            0,
+            "Analyzing URI timed out\n  video #1: H.264",
+            "",
+        )
+
+    monkeypatch.setattr(deep_probe, "_run_process", fake_run)
+    monkeypatch.setattr(deep_probe, "_find_gstreamer_discoverer", lambda: "gst-discoverer-1.0")
+    status, reason, compatible = asyncio.run(
+        deep_probe._probe_gstreamer(
+            Stream(
+                url="https://media.example/live.m3u8",
+                name="Timed out",
+            ),
+            _config(),
+        )
+    )
+
+    assert status == DeepProbeStatus.SOFT_FAIL
+    assert reason == "gstreamer_network_timeout"
+    assert compatible is None
+
+
+def test_gstreamer_process_timeout_is_soft_unknown(monkeypatch):
+    async def fake_run(command: list[str], timeout_seconds: int):
+        return deep_probe._ProcessResult(-1, "", "timeout", timed_out=True)
+
+    monkeypatch.setattr(deep_probe, "_run_process", fake_run)
+    monkeypatch.setattr(deep_probe, "_find_gstreamer_discoverer", lambda: "gst-discoverer-1.0")
+    status, reason, compatible = asyncio.run(
+        deep_probe._probe_gstreamer(
+            Stream(
+                url="https://media.example/live.m3u8",
+                name="Outer timeout",
+            ),
+            _config(),
+        )
+    )
+
+    assert status == DeepProbeStatus.SOFT_FAIL
+    assert reason == "gstreamer_timeout"
+    assert compatible is None
+
+
 def test_gstreamer_unknown_errors_are_hard_but_network_errors_are_soft():
+    assert (
+        deep_probe._gstreamer_reported_failure_status(
+            "Optional metadata tag not found\n  video #1: H.264"
+        )
+        is None
+    )
     assert deep_probe._gstreamer_failure_status("not-negotiated") == (
         DeepProbeStatus.HARD_FAIL,
         "incompatible_or_media_error",
