@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "generation": "16ad1a6d25ee4165988a6f102b414cbc",
+  "files": {
+    "all.m3u": "2ac20fec50d211a847db74788396c5277f6f1dfe465f933f4959eee794480937",
+    "all.txt": "3bcc2c81461049bbe6dc7f916ab7a8573356c6a93149e53ea63b785e352f0c9b",
+    "stable.m3u": "b853dfd934adbe4634bc38dd12e6db69e14c454b6f2f6bb99906ae1f64be6c07",
+    "stable.txt": "945c43765ace4046bbea01e6f28ad627f1e3c55fc6e32c39213b2cf9ff0eba9d",
+    "cn.m3u": "8ceb7504d796a04f1df02e0fa0c50ce1f6cc77ce0e898e5317c3f950704483ed",
+    "global.m3u": "9daac313531938aece2c9cf9b5e37c0dac5dea174b70a9dcd7fa6c0d85ee9fc3",
+    "meta.json": "93c6fd2d4fbdc1035455bebd0de5c14af095adb4c1f9c769ab493fda709a41cd",
+    ".state/health.json": "7342b001c62ecda772e8ee6c6f075dda17dbf653890820ea3bfb202a5079aae6"
+  }
+}
