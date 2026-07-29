@@ -5,7 +5,7 @@
 本项目是「聚合聚合器」：上游本身就是别人跑好的自动化管道产物（vbskycn 每 6h 扫描、bjzhou 每日 ffmpeg 深测、iptv-org 每日校验……）。管道把多家成品做**交叉去重 + 统一命名 + 分组 + 分层验证**，同时发布：
 
 - `all.m3u`：宽松候选池，便于诊断和后续发现，不承诺可播；
-- `stable.m3u`：只有本轮 FFmpeg 实际解码通过或处于短时 GRACE 的线路，供客户端默认订阅。
+- `stable.m3u`：只有本轮 FFmpeg 实际解码通过或处于短时 GRACE 的线路，供客户端默认订阅；每频道最多 5 条且优先不同 host，EXTINF 带 `x-tier="pass|grace"`。
 
 ## 功能
 
@@ -19,7 +19,7 @@
 - **正向准入状态机**：新流必须 `PASS` 才进入 stable；仅基础设施软失败可在最近一次 PASS 后短时 `GRACE`；4xx、格式或解码失败立即移出。
 - **请求头透传**：保留公开安全的 User-Agent / Referer / Origin 等头，验证条件与小董电视播放条件一致；Cookie/Authorization 不进入公共产物。
 - **多格式产出**：`stable.m3u` / `stable.txt`（严格）、`all.m3u` / `all.txt`（候选），以及从 stable 派生的 `cn.m3u` / `global.m3u`；`meta.json` 提供来源和验证证据。
-- **隔离与原子发布**：GitHub Actions 每 6 小时在禁用 IPv6、阻断私网/metadata egress 的容器中准备并以 6 个只读分片深验；质量门禁通过后，产物、状态、元数据以同一 generation 单提交发布到 `output`。
+- **隔离与原子发布**：GitHub Actions 每 6 小时在禁用 IPv6、阻断私网/metadata egress 的容器中准备并以 6 个只读分片深验；频道跌幅等硬门禁通过后发布。GRACE 占比偏高只告警、不阻断整轮，避免上游抖动卡住更新。
 
 ## 示例
 
@@ -90,7 +90,7 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 | `probe.py` | aiohttp 增强 L0，识别错误页、空 HLS、有限 VOD和网络失败 |
 | `deep_probe.py` | 有界并发 FFprobe 元数据检查、FFmpeg 短时解码与 GStreamer 兼容门禁 |
 | `state.py` | broad 连续失败计数；stable 的 PASS / GRACE / REJECT 状态机 |
-| `rank.py` | 按深验状态、历史成功、延迟和多源佐证选择每频道前两条 |
+| `rank.py` | 按深验状态、历史成功、延迟和多源佐证选择每频道最多 5 条，优先不同 host |
 | `artifacts.py` / `ci.py` | CI 候选/分片结果契约、完整性检查与发布质量门禁 |
 | `emit.py` | 产出 m3u / txt / meta.json / manifest.json |
 | `pipeline.py` | 编排全流程 |

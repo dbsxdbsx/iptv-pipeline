@@ -45,7 +45,7 @@ class ValidationConfig:
     deep_concurrency: int = 4
     gstreamer_timeout_seconds: int = 12
     require_gstreamer: bool = True
-    stable_max_per_channel: int = 2
+    stable_max_per_channel: int = 5
     grace_hours: int = 12
     grace_rounds: int = 2
     minimum_stable_channels: int = 100
@@ -137,7 +137,7 @@ def _load_validation(path: Path) -> ValidationConfig:
         deep_concurrency=max(1, min(8, int(data.get("deep_concurrency", 4)))),
         gstreamer_timeout_seconds=max(5, int(data.get("gstreamer_timeout_seconds", 12))),
         require_gstreamer=bool(data.get("require_gstreamer", True)),
-        stable_max_per_channel=max(1, min(5, int(data.get("stable_max_per_channel", 2)))),
+        stable_max_per_channel=max(1, min(5, int(data.get("stable_max_per_channel", 5)))),
         grace_hours=max(0, int(data.get("grace_hours", 12))),
         grace_rounds=max(0, int(data.get("grace_rounds", 2))),
         minimum_stable_channels=max(1, int(data.get("minimum_stable_channels", 100))),

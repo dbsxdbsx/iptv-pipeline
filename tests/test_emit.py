@@ -57,6 +57,32 @@ def test_m3u_attributes_cannot_inject_lines():
     assert sum(line.startswith("#EXTINF:") for line in output.splitlines()) == 1
 
 
+def test_stable_m3u_writes_x_tier_from_state():
+    stream = Stream(
+        url="https://media.example/live.m3u8",
+        name="Demo",
+        raw_name="Demo",
+        source="source-a",
+    )
+    channel = Channel(name="Demo", group="国际", streams=[stream])
+    state = HealthState()
+    state.apply_deep_result(
+        stream.state_key(),
+        DeepProbeResult(
+            DeepProbeStatus.PASS,
+            "decoded",
+            checked_at=1000.0,
+            latency_ms=500,
+            decoded_frames=12,
+        ),
+        ValidationConfig(),
+    )
+
+    output = to_m3u([channel], state=state)
+    assert 'x-tier="pass"' in output
+    assert "https://media.example/live.m3u8" in output
+
+
 def test_meta_generation_matches_stable_rank_and_omits_credentials():
     stream = Stream(
         url="https://media.example/live.m3u8?token=public-upstream-token",

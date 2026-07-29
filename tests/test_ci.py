@@ -61,6 +61,50 @@ def test_quality_gate_accepts_healthy_first_generation(tmp_path):
     )
 
 
+def test_quality_gate_warns_but_publishes_when_grace_ratio_high(tmp_path, caplog):
+    import logging
+
+    from iptv_pipeline.state import TIER_GRACE
+
+    stable, state = _stable_channels(9)
+    grace_stream = Stream(
+        url="https://grace.example/live.m3u8",
+        name="Grace Channel",
+        raw_name="Grace Channel",
+    )
+    state.entries[grace_stream.state_key()] = {
+        "tier": TIER_GRACE,
+        "grace_rounds": 1,
+        "last_deep_ok": 1000.0,
+        "deep_successes": 1,
+    }
+    stable.append(Channel(name=grace_stream.name, streams=[grace_stream]))
+
+    # 1/10 = 10% 不触发；再加一条 GRACE 变成 2/11 ≈ 18%
+    grace_stream_2 = Stream(
+        url="https://grace2.example/live.m3u8",
+        name="Grace Channel 2",
+        raw_name="Grace Channel 2",
+    )
+    state.entries[grace_stream_2.state_key()] = {
+        "tier": TIER_GRACE,
+        "grace_rounds": 1,
+        "last_deep_ok": 1000.0,
+        "deep_successes": 1,
+    }
+    stable.append(Channel(name=grace_stream_2.name, streams=[grace_stream_2]))
+
+    with caplog.at_level(logging.WARNING):
+        _enforce_quality_gate(
+            stable,
+            state,
+            _config(minimum_stable_channels=1),
+            tmp_path / "missing-meta.json",
+        )
+
+    assert any("GRACE 占比偏高但仍继续发布" in record.message for record in caplog.records)
+
+
 def test_quality_gate_rejects_large_regression(tmp_path):
     stable, state = _stable_channels(7)
     previous_meta = tmp_path / "meta.json"

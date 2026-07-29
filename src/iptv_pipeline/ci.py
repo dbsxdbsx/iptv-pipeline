@@ -278,8 +278,24 @@ def _enforce_quality_gate(
             f"stable 频道数 {channel_count} < {cfg.validation.minimum_stable_channels}"
         )
     grace_count = sum(state.stable_tier(key) == TIER_GRACE for key in stream_keys)
-    if stream_count > 0 and grace_count / stream_count > 0.10:
-        raise RuntimeError(f"质量门禁失败: GRACE 占比 {grace_count / stream_count:.1%} > 10%")
+    pass_count = stream_count - grace_count
+    grace_ratio = (grace_count / stream_count) if stream_count > 0 else 0.0
+    logger.info(
+        "质量门禁统计: stable=%d频道/%d线路, PASS=%d, GRACE=%d (%.1f%%)",
+        channel_count,
+        stream_count,
+        pass_count,
+        grace_count,
+        grace_ratio * 100,
+    )
+    # 超过 10% 只告警、仍发布：避免上游抖动整轮卡死导致用户长时间吃不到新 PASS。
+    if stream_count > 0 and grace_ratio > 0.10:
+        logger.warning(
+            "GRACE 占比偏高但仍继续发布: %d/%d = %.1f%% > 10%%",
+            grace_count,
+            stream_count,
+            grace_ratio * 100,
+        )
 
     previous_stats = _previous_stable_stats(previous_meta_path)
     previous_count = previous_stats["channels_stable"]

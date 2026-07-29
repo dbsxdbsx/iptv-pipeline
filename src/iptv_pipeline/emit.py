@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from .config import VALIDATION_SCOPE
 from .models import Channel
 from .safety import sanitize_headers
-from .state import HealthState
+from .state import TIER_GRACE, TIER_PASS, HealthState
 
 #: 客户端可读的 EPG 地址（写入 m3u 头，供播放器自动加载节目单）
 DEFAULT_EPG_URL = "https://epg.112114.xyz/pp.xml"
@@ -18,8 +18,16 @@ def _escape_attr(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", "").replace("\n", "")
 
 
-def to_m3u(channels: list[Channel], epg_url: str = DEFAULT_EPG_URL) -> str:
-    """生成标准 M3U：带 group-title / tvg-id / tvg-logo，同频道多流依次列出。"""
+def to_m3u(
+    channels: list[Channel],
+    epg_url: str = DEFAULT_EPG_URL,
+    *,
+    state: HealthState | None = None,
+) -> str:
+    """生成标准 M3U：带 group-title / tvg-id / tvg-logo，同频道多流依次列出。
+
+    若提供 ``state``，为 stable 线路写入 ``x-tier="pass|grace"``，供客户端冷启动排序。
+    """
     lines = [f'#EXTM3U x-tvg-url="{_escape_attr(epg_url)}"']
     for ch in channels:
         for st in ch.streams:
@@ -29,6 +37,10 @@ def to_m3u(channels: list[Channel], epg_url: str = DEFAULT_EPG_URL) -> str:
             if ch.logo:
                 attrs.append(f'tvg-logo="{_escape_attr(ch.logo)}"')
             attrs.append(f'group-title="{_escape_attr(ch.group)}"')
+            if state is not None:
+                tier = state.stable_tier(st.state_key())
+                if tier in {TIER_PASS, TIER_GRACE}:
+                    attrs.append(f'x-tier="{tier}"')
             lines.append(f"#EXTINF:-1 {' '.join(attrs)},{_escape_attr(ch.name)}")
             headers = sanitize_headers(st.headers)
             if headers:

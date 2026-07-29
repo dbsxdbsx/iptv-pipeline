@@ -6,7 +6,7 @@
   "deep_concurrency": 4,
   "gstreamer_timeout_seconds": 12,
   "require_gstreamer": true,
-  "stable_max_per_channel": 2,
+  "stable_max_per_channel": 5,
   "grace_hours": 12,
   "grace_rounds": 2,
   "minimum_stable_channels": 100,

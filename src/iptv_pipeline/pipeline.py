@@ -185,14 +185,14 @@ def write_outputs(
     files = {
         "all.m3u": to_m3u(all_channels),
         "all.txt": to_txt(all_channels),
-        "stable.m3u": to_m3u(stable_channels),
+        "stable.m3u": to_m3u(stable_channels, state=state),
         "stable.txt": to_txt(stable_channels),
     }
 
     cn = [c for c in stable_channels if _is_cn_channel(c)]
     global_ = [c for c in stable_channels if not _is_cn_channel(c)]
-    files["cn.m3u"] = to_m3u(cn)
-    files["global.m3u"] = to_m3u(global_)
+    files["cn.m3u"] = to_m3u(cn, state=state)
+    files["global.m3u"] = to_m3u(global_, state=state)
     files["meta.json"] = to_meta_json(
         all_channels,
         stable_channels,
