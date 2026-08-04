@@ -7,6 +7,8 @@ from iptv_pipeline.ci import (
     _enforce_quality_gate,
     _load_deep_result_shards,
     _load_previous_state,
+    render_upstream_summary,
+    write_upstream_report,
 )
 from iptv_pipeline.config import VALIDATION_SCOPE, Config, ValidationConfig
 from iptv_pipeline.deep_probe import DeepProbeResult, DeepProbeStatus
@@ -49,6 +51,48 @@ def _stable_channels(count: int) -> tuple[list[Channel], HealthState]:
         )
         channels.append(Channel(name=stream.name, streams=[stream]))
     return channels, state
+
+
+def test_upstream_report_names_the_dead_sources(tmp_path):
+    """死上游不让这一轮失败，所以必须被点名报出来。
+
+    只记 logger.warning 的后果是实测过的：11 个源里死了 3 个，产出与质量门禁全部正常。
+    """
+    report_path = tmp_path / "upstream_report.json"
+    report = write_upstream_report(
+        report_path,
+        configured=["https://a.example/x.m3u", "https://b.example/y.m3u", "http://dead/z.m3u"],
+        fetched={"https://a.example/x.m3u", "https://b.example/y.m3u"},
+    )
+    assert report == {"total": 3, "ok": 2, "failed": ["http://dead/z.m3u"]}
+    assert json.loads(report_path.read_text(encoding="utf-8")) == report
+
+    summary = (tmp_path / "upstream_report.md").read_text(encoding="utf-8")
+    assert "2/3" in summary
+    assert "http://dead/z.m3u" in summary, "死上游必须在摘要里点名，只报个数等于还要去翻日志"
+
+
+def test_upstream_report_is_written_even_when_all_healthy(tmp_path):
+    """两份都必须无条件落盘：workflow 那步在文件缺失时静默跳过，缺文件等于悄悄失去这层观测。"""
+    report_path = tmp_path / "upstream_report.json"
+    report = write_upstream_report(
+        report_path,
+        configured=["https://a.example/x.m3u"],
+        fetched={"https://a.example/x.m3u"},
+    )
+    assert report == {"total": 1, "ok": 1, "failed": []}
+    assert report_path.exists()
+    summary = (tmp_path / "upstream_report.md").read_text(encoding="utf-8")
+    assert summary.strip() == "### 上游存活：1/1"
+
+
+def test_upstream_summary_renders_valid_markdown_list():
+    """摘要贴进 Step Summary 前后都不许缺行尾换行，否则会和相邻小节粘成一行。"""
+    summary = render_upstream_summary({"total": 5, "ok": 3, "failed": ["http://a/1", "http://b/2"]})
+    assert summary.endswith("\n")
+    lines = summary.splitlines()
+    assert lines[0].startswith("### ")
+    assert lines[-2:] == ["- `http://a/1`", "- `http://b/2`"]
 
 
 def test_quality_gate_accepts_healthy_first_generation(tmp_path):

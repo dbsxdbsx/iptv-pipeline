@@ -9,8 +9,11 @@ from iptv_pipeline.normalize import (
     is_ipv6_url,
     normalize_group_key,
     normalize_key,
+    rewrite_logo_url,
     split_upstream_groups,
 )
+
+_FMM_RAW = "https://raw.githubusercontent.com/fanmingming/live/main/"
 
 
 def _cfg(**overrides) -> Config:
@@ -46,6 +49,7 @@ def _cfg(**overrides) -> Config:
         ],
         default_group="其他",
         foreign_group="国际",
+        logo_rewrites=[("https://live.fanmingming.cn/", _FMM_RAW)],
     )
     defaults.update(overrides)
     return Config(**defaults)
@@ -204,6 +208,46 @@ def test_display_order_is_independent_of_precedence():
     channels = build_channels(streams, cfg)
     # 地方台在判定顺序里靠后（题材优先），但展示时排在央视之前
     assert [c.group for c in channels] == ["地方台", "央视"]
+
+
+def test_logo_rewrite_only_swaps_the_prefix():
+    cfg = _cfg()
+    assert (
+        rewrite_logo_url("https://live.fanmingming.cn/tv/CCTV1.png", cfg)
+        == f"{_FMM_RAW}tv/CCTV1.png"
+    )
+    # 文件名含中文与空格时不得被改动（这类台标占多数）
+    assert (
+        rewrite_logo_url("https://live.fanmingming.cn/tv/湖南卫视.png", cfg)
+        == f"{_FMM_RAW}tv/湖南卫视.png"
+    )
+
+
+def test_logo_rewrite_leaves_other_hosts_alone():
+    cfg = _cfg()
+    for url in ("https://i.imgur.com/abc.png", "", "https://tb.zbds.top/tv/x.png"):
+        assert rewrite_logo_url(url, cfg) == url
+
+
+def test_logo_rewrite_happens_before_dedup():
+    """改道必须早于去重：logo 是「取第一个非空」，晚了就得改好几处、且 artifacts 落旧值。"""
+    streams = [
+        Stream(
+            url="http://a/1",
+            name="",
+            raw_name="CCTV1",
+            logo="https://live.fanmingming.cn/tv/CCTV1.png",
+        ),
+    ]
+    channels = build_channels(streams, _cfg())
+    assert channels[0].logo == f"{_FMM_RAW}tv/CCTV1.png"
+    assert channels[0].streams[0].logo == f"{_FMM_RAW}tv/CCTV1.png"
+
+
+def test_logo_rewrite_is_noop_without_config():
+    cfg = _cfg(logo_rewrites=[])
+    url = "https://live.fanmingming.cn/tv/CCTV1.png"
+    assert rewrite_logo_url(url, cfg) == url
 
 
 def test_group_scope_lookup():

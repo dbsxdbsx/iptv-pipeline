@@ -33,9 +33,66 @@ from .state import TIER_GRACE, HealthState
 logger = logging.getLogger(__name__)
 
 
+def build_upstream_report(configured: list[str], fetched: set[str]) -> dict:
+    """汇总上游拉取结果。
+
+    死掉的上游此前只产生一条 ``logger.warning``：管道拿剩下的源照常跑完，质量门禁
+    看的是 stable 频道数、也照常通过，于是 11 个源里死了 3 个而产出一切正常。
+    """
+    failed = [url for url in configured if url not in fetched]
+    return {
+        "total": len(configured),
+        "ok": len(configured) - len(failed),
+        "failed": failed,
+    }
+
+
+def render_upstream_summary(report: dict) -> str:
+    """渲染 CI Step Summary 用的 markdown。
+
+    渲染放在这里而不是 workflow 的内联脚本里，是为了能被单元测试盯住——这层观测本身
+    出问题时不会有任何报错，只会安静地不再报告死上游，正是它要防的那种失效。
+    """
+    failed = report.get("failed") or []
+    ok, total = report.get("ok", 0), report.get("total", 0)
+    if not failed:
+        return f"### 上游存活：{ok}/{total}\n"
+    lines = [
+        f"### 上游存活：{ok}/{total}（有失败）",
+        "",
+        "以下上游本轮拉取失败，长期失败请更换或在 `config/upstreams.txt` 中停用：",
+        "",
+    ]
+    lines.extend(f"- `{url}`" for url in failed)
+    return "\n".join(lines) + "\n"
+
+
+def write_upstream_report(path: Path, *, configured: list[str], fetched: set[str]) -> dict:
+    """把上游拉取结果与其 markdown 渲染一起落盘，返回报告内容。
+
+    两份都写在 bundle 旁边，随 ``ci-work/`` 一起成为 artifact，后续 job 无需改契约即可读到。
+    """
+    report = build_upstream_report(configured, fetched)
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.with_suffix(".md").write_text(render_upstream_summary(report), encoding="utf-8")
+    return report
+
+
 async def prepare(config_dir: Path, bundle_path: Path) -> None:
     cfg = Config.load(config_dir)
     contents = await fetch_all(cfg.upstreams)
+    report = write_upstream_report(
+        bundle_path.with_name("upstream_report.json"),
+        configured=cfg.upstreams,
+        fetched=set(contents),
+    )
+    if report["failed"]:
+        logger.warning(
+            "%d/%d 个上游拉取失败: %s",
+            len(report["failed"]),
+            report["total"],
+            ", ".join(report["failed"]),
+        )
     if not contents:
         raise RuntimeError("没有任何上游拉取成功")
     streams: list[Stream] = []

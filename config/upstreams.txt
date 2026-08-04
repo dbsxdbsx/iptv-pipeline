@@ -9,16 +9,24 @@
 #
 # 维护建议：某个上游长期失效时，在其行首加 # 停用而非直接删除，方便日后恢复。
 
+# 上游 URL 一律优先写 GitHub raw 而非作者自建 CDN：
+# 拉取发生在 GitHub Actions 里（raw 在那儿很快），而自建 CDN 是这份列表的主要腐烂来源
+# ——fanmingming 的 live.fanmingming.cn 挂掉时，同一批内容在仓库里完好无损。
+
 # ---- 国内（央视/卫视/地方台，GitHub 自动更新型）----
 https://raw.githubusercontent.com/bjzhou/iptv-collector/output/iptv.m3u   # 我们 App 现内置源，ffmpeg 深测型
 https://live.zbds.top/tv/iptv4.m3u                                        # vbskycn，服务器每 6h 扫描验证
-https://live.fanmingming.cn/tv/m3u/ipv6.m3u                               # fanmingming，台标事实标准
-https://raw.githubusercontent.com/YueChan/Live/main/APTV.m3u              # YueChan 聚合
+https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/itv.m3u    # fanmingming 主表，台标事实标准
+https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u   # fanmingming IPv6 变体
+https://raw.githubusercontent.com/YueChan/Live/main/IPTV.m3u              # YueChan 聚合（原 APTV.m3u 已改名）
 https://raw.githubusercontent.com/Kimentanm/aptv/master/m3u/iptv.m3u      # Kimentanm aptv
 
 # ---- 港澳台 ----
 https://raw.githubusercontent.com/suxuang/myIPTV/main/ipv4.m3u            # suxuang 典藏版，港澳台较全
-http://aktv.space/live.m3u                                               # AKTV，港台专项
+https://iptv-org.github.io/iptv/countries/hk.m3u                          # 香港
+https://iptv-org.github.io/iptv/countries/tw.m3u                          # 台湾
+https://iptv-org.github.io/iptv/countries/mo.m3u                          # 澳门
+# http://aktv.space/live.m3u                                              # AKTV 港台专项：2026-08-04 起 404，域名仍在但无此路径；未找到官方新址
 
 # ---- 国际（iptv-org 全球库，按语言/分类取子集，降低体积）----
 https://iptv-org.github.io/iptv/languages/zho.m3u                         # 中文频道

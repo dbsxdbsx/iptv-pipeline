@@ -50,13 +50,17 @@ config/upstreams.txt → fetch → parse(headers/m3u/txt) → normalize
 - **`order` 与 `display_order` 是两件事**：`order` 是判定优先级，要「题材优先于地域」——地方台的关键字是行政区名，排在题材桶之前会把「山东体育」「四川妇女儿童」抢走（实测体育少 6 个、少儿少 10 个，而分布表看上去依然合理），所以它必须垫在所有题材桶之后当残余桶；`display_order` 是产物与侧栏顺序，要「常看的排前面」——地方台有四百多频道，排第 10 位意味着用户在遥控器上按九次右键。两个列表必须含相同分组名，漂移时那一整组会被静默甩到末尾。
 - **`cn.m3u` / `global.m3u` 归属由 `groups.json` 的 `scope` 驱动**，不得写回代码里的名单：写死时每加一个分组桶都要记得同步改判定函数，忘了就整组判成境外，而这个错没有任何报错出口。漏写 `scope` 会静默落到 `auto` 走汉字启发式，对「影视剧集」里 CHC / NewTV 这类拉丁名频道就会判错。
 - **别名表** `config/aliases.json` 与 **分组的 `upstream` 表**是需要人工边跑边补的两处「脏活」。新增频道归并写前者，新上游带来的新分组名写后者，都不要硬编码进代码。
+- **上游 URL 一律优先写 GitHub raw，而不是作者自建 CDN**：拉取发生在 GitHub Actions 里（raw 在那儿很快，国内慢与此无关），而自建 CDN 是这份列表**唯一的**腐烂来源——`fanmingming` 的 `live.fanmingming.cn` 挂掉时，同一批 m3u 与 933 张台标在 `fanmingming/live` 仓库里完好无损，换成 raw 路径当场全活。
+- **死上游只降级、不失败，所以必须主动点名**：`fetch_all` 拉取失败就跳过（这是对的，拿剩下的源产出比停更好），质量门禁看的是 stable 频道数、少几个源照样够——于是 11 个源里死了 3 个而产出全程正常、日志之外毫无迹象。`ci.prepare` 现在无条件在 bundle 旁写 `upstream_report.json` 与 `upstream_report.md`（随 `ci-work/` 成为 artifact），workflow 那步只做一次 `cat`。两条要求：**报告必须无条件落盘**（workflow 在文件缺失时静默跳过，不写就等于悄悄失去这层观测），**markdown 必须在库里渲染**而不是写成 workflow 内联脚本——这层观测坏掉时不会有任何报错，只会安静地不再报死上游，正是它要防的那种失效，所以渲染得能被单元测试盯住。摘要必须**点名**失败的 URL，只报个数等于还要去翻日志。
+- **台标改道**（`config/logo_rewrites.json` + `normalize.rewrite_logo_url`）三条约束：(1) **只许换前缀**，路径与文件名必须原样保留，改路径就是把台标整批打成 404；(2) **必须发生在去重之前**——`Stream.merge_provenance` 与频道级 `logo` 都是「取第一个非空」，晚了既要改好几处、`artifacts` 里落下的还是旧地址；(3) **已判失效到需要改道的 host 不得同时还挂在 `upstreams.txt` 里**等着超时（守卫测试 `test_no_upstream_points_at_a_host_we_rewrite_away`）——`fanmingming` 那次就是既是死上游又是死台标源，两处各自都只是静默失败、看起来都不像问题。
 - 新增依赖优先 `uv add`，不手改 `uv.lock`。
 - 所有测试必须真实断言；改解析/归一化/准入/状态机/发布契约须补对应测试。
 
 ## Notes
 
-- 上游失效：在 `config/upstreams.txt` 行首加 `#` 停用，不要直接删（方便恢复）。
-- **2026-08-04 实测三个上游已死**：`live.fanmingming.cn`（连不上）、`YueChan/Live/main/APTV.m3u`（404）、`aktv.space/live.m3u`（404）。死的正好是「台标事实标准」与「港台专项」两条，是候选池偏薄的直接原因之一。尚未在 `upstreams.txt` 里停用，待供给扩容一并处理。
-- 候选池的境外占比很高（约 62% 归入「国际」），根源是 `upstreams.txt` 订阅了 iptv-org 的三个**全球** categories 子集（news / sports / movies 合计 2274 条，绝大多数是小语种台）。分组修复只是把它们从「其他」里正确标注出来，真要收敛体积应改订阅为按语言 / 国家取子集。
+- 上游失效：在 `config/upstreams.txt` 行首加 `#` 停用，不要直接删（方便恢复）。维护时先跑 `bash scripts/probe_upstreams.sh` 拿到每个上游的状态码与频道数。
+- **2026-08-04 修完的三个死上游**（原因各不相同，值得记住区别）：`live.fanmingming.cn` 是**自建 CDN 挂了而仓库完好**（CNAME 到 `cnlive.pages.dev`，DNS 解析正常但 TLS 握手被重置），改走 raw 即恢复且拿到更大的 `itv.m3u`（189 条）；`YueChan/Live/main/APTV.m3u` 是**文件改名**（现为 `IPTV.m3u`），仓库一直活着；只有 `aktv.space/live.m3u` 是真 404 且未找到新址，已停用，港澳台缺口由 iptv-org 的 hk/tw/mo 子集部分补上。**先查是不是改名或换域名，再考虑找替代**——三个里有两个都不需要替代。
+- **台标的可达性和境外占比是同一个问题的两面**。已发布产物 1868 频道里 1850 有台标，但 host 分布是：`i.imgur.com` 715、`images.pluto.tv` 235、`upload.wikimedia.org` 121——加起来 57% 的台标挂在国内基本拉不出来的 host 上，而这 57% 恰好就是那批境外频道。更糟的是 App 的台标回退（`live_panel` 的 `_ChannelLogoImage` 拼 `fanmingming/live/main/tv/{频道名}.png`）里全是**中文**台标，给 `Al Jazeera Arabic` 拼一个必然 404——境外频道等于「主 URL 被墙 + 回退必然 404」，两次失败请求换一个灰图标，还白烧 App 侧 `image_fetcher` 的熔断与限流预算。
+- 候选池境外占比约一半（4610 条流里 2308 归「国际」），根源是订阅了 iptv-org 的三个**全球** categories（news / sports / movies 合计 2274 条，绝大多数小语种台）。**是否砍掉是产品决策，不是纯技术修复**：砍了等于放弃 `global.m3u` 的主要内容，同时省下深验预算（最贵的一环）与上面那批必然失败的台标请求。分组修复只是把它们从「其他」里正确标注出来，没有改变体积。
 - CI 产物用 `force-with-lease` 单提交写 `output` 分支，避免历史膨胀并防并发覆盖。
 - 关键字搜索增量会扩大坏源池，只有 stable 质量指标稳定后才评估。

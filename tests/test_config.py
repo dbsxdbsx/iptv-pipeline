@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from iptv_pipeline.config import Config
+from iptv_pipeline.config import Config, load_lines
 from iptv_pipeline.models import Channel
-from iptv_pipeline.normalize import assign_group, normalize_group_key
+from iptv_pipeline.normalize import assign_group, normalize_group_key, rewrite_logo_url
 from iptv_pipeline.pipeline import _is_cn_channel
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
@@ -91,6 +91,33 @@ def test_upstream_tokens_are_stored_normalized():
     for rule in cfg.group_rules:
         for token in rule.upstream:
             assert token == normalize_group_key(token), f"{rule.name} 的 {token!r} 未归一化"
+
+
+def test_logo_rewrites_load_and_cover_the_dead_fanmingming_cdn():
+    """live.fanmingming.cn 是国内台标的事实标准、被大量上游内嵌引用。
+
+    它 2026-08 挂掉时影响 129 个已发布频道，而这些地址来自上游 m3u 字符串，
+    停用上游解决不了——必须在归一化阶段改道。
+    """
+    cfg = Config.load(CONFIG_DIR)
+    assert cfg.logo_rewrites, "台标重写表为空"
+    rewritten = rewrite_logo_url("https://live.fanmingming.cn/tv/CCTV1.png", cfg)
+    assert rewritten != "https://live.fanmingming.cn/tv/CCTV1.png"
+    assert rewritten.endswith("/tv/CCTV1.png"), "只许换前缀，换掉路径会把台标全部打成 404"
+
+
+def test_no_upstream_points_at_a_host_we_rewrite_away():
+    """已知失效到需要改道的 host，不该同时还挂在上游列表里等着超时。
+
+    这正是上一批的实况：fanmingming 的 CDN 既是死上游、又是死台标源，
+    而两处都只是静默失败，各自看起来都不像问题。
+    """
+    cfg = Config.load(CONFIG_DIR)
+    upstreams = load_lines(CONFIG_DIR / "upstreams.txt")
+    for dead_prefix, _ in cfg.logo_rewrites:
+        host = dead_prefix.split("//", 1)[-1].rstrip("/")
+        for url in upstreams:
+            assert host not in url, f"上游 {url} 仍指向已判失效的 {host}"
 
 
 def test_real_config_classifies_representative_channels():

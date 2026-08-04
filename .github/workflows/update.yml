@@ -149,6 +149,18 @@ jobs:
             "iptv-pipeline-validator:${GITHUB_SHA}" \
             prepare --config /app/config --bundle /data/candidates.json
 
+      # 死掉的上游不会让这一轮失败（拿剩下的源照常产出比停更好），所以必须主动顶到摘要里，
+      # 否则它只是一条埋在日志里的 warning——上一批 3 个死源就是这么无声无息烂掉的。
+      # markdown 由 ci.render_upstream_summary 在容器里渲染好落盘，这里只负责贴出来
+      # ——渲染逻辑放在库里才能被单元测试盯住，这层观测坏掉时是不会报错的。
+      - name: 汇总上游存活情况
+        if: always()
+        run: |
+          set -euo pipefail
+          summary=ci-work/upstream_report.md
+          [ -f "$summary" ] || exit 0
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+
       - name: 上传候选与上一代状态
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

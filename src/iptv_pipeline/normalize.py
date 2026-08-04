@@ -62,6 +62,20 @@ def is_blacklisted(stream: Stream, cfg: Config) -> bool:
     return any(kw in hay for kw in cfg.blacklist)
 
 
+def rewrite_logo_url(url: str, cfg: Config) -> str:
+    """把失效图床上的台标地址改道到可达镜像（见 config/logo_rewrites.json）。
+
+    改道必须发生在去重之前：``merge_provenance`` 与频道级 logo 都是「取第一个非空」，
+    等到那时候再改就得改好几处，而 artifacts 里落下的仍是旧地址。
+    """
+    if not url:
+        return url
+    for src, dst in cfg.logo_rewrites:
+        if url.startswith(src):
+            return dst + url[len(src) :]
+    return url
+
+
 def normalize_group_key(raw: str) -> str:
     """把上游分组名归一成匹配用的 key：全角转半角、小写、去 emoji 与标点空白。
 
@@ -120,6 +134,7 @@ def build_channels(streams: list[Stream], cfg: Config) -> list[Channel]:
             continue
 
         st.name = canonicalize_name(st.raw_name, cfg)
+        st.logo = rewrite_logo_url(st.logo, cfg)
         st.is_ipv6 = is_ipv6_url(st.url)
 
         dk = st.dedup_key()

@@ -1,0 +1,27 @@
+{
+  "_note": [
+    "台标 host 重写表：把上游内嵌的失效台标地址改道到可达镜像。",
+    "键是要匹配的 URL 前缀，值是替换成的前缀；按书写顺序取第一个命中者。",
+    "",
+    "为什么需要单独一层：台标地址是上游 m3u 里内嵌的字符串，上游不修我们就没别的办法。",
+    "而 fanmingming 是国内台标的事实标准，被大量聚合源直接引用——它的 CDN 一挂，",
+    "所有引用它的上游都跟着挂，换上游或停用上游都解决不了，只能在归一化阶段改道。",
+    "",
+    "两个域名的现状（2026-08-04 实测，候选池里各 832 / 191 条引用）：",
+    "  live.fanmingming.cn  CNAME 到 cnlive.pages.dev，DNS 正常解析到 Cloudflare（172.66.x），",
+    "                       但 TLS 握手即被重置——即 pages.dev 那条链路的老问题。",
+    "  live.fanmingming.com 解析到 31.13.85.34（Meta 的 IP 段），典型 DNS 污染返回值，连不上。",
+    "而同一批图就在 fanmingming/live 仓库的 tv/ 目录里（933 张），两个域名的路径形态都是 tv/，",
+    "与仓库完全对应，所以这里只换前缀、不动文件名。",
+    "",
+    "改道目标暂用 GitHub raw：与 App 现有台标回退（live_panel 的 _ChannelLogoImage）同一个 host，",
+    "不算新增依赖。但台标是**用户设备**去拉的，国内拉 GitHub 慢——投递域名到位后应改指自有域名，",
+    "届时这张表是唯一改动点，不需要重发 App。"
+  ],
+  "rewrites": {
+    "https://live.fanmingming.cn/": "https://raw.githubusercontent.com/fanmingming/live/main/",
+    "http://live.fanmingming.cn/": "https://raw.githubusercontent.com/fanmingming/live/main/",
+    "https://live.fanmingming.com/": "https://raw.githubusercontent.com/fanmingming/live/main/",
+    "http://live.fanmingming.com/": "https://raw.githubusercontent.com/fanmingming/live/main/"
+  }
+}

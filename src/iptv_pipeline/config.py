@@ -76,6 +76,8 @@ class Config:
     display_order: list[str] = field(default_factory=list)
     #: 境外兜底分组：前两级都没命中且频道名不含汉字时归入。空串表示关闭该级。
     foreign_group: str = ""
+    #: 台标 URL 前缀重写表 (旧前缀, 新前缀)，保序，先命中先用
+    logo_rewrites: list[tuple[str, str]] = field(default_factory=list)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
 
     @classmethod
@@ -86,6 +88,7 @@ class Config:
         alias_to_canonical, canonical_names = _load_aliases(config_dir / "aliases.json")
         groups = _load_groups(config_dir / "groups.json")
         validation = _load_validation(config_dir / "validation.json")
+        logo_rewrites = _load_logo_rewrites(config_dir / "logo_rewrites.json")
 
         return cls(
             upstreams=upstreams,
@@ -96,6 +99,7 @@ class Config:
             default_group=groups.default_group,
             display_order=groups.display_order,
             foreign_group=groups.foreign_group,
+            logo_rewrites=logo_rewrites,
             validation=validation,
         )
 
@@ -181,6 +185,19 @@ def _load_groups(path: Path) -> GroupConfig:
         foreign_group=foreign_group,
         display_order=display_order,
     )
+
+
+def _load_logo_rewrites(path: Path) -> list[tuple[str, str]]:
+    """读台标前缀重写表。保序返回，让「先命中先用」可预测。"""
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    rewrites = data.get("rewrites", {})
+    return [
+        (str(src), str(dst))
+        for src, dst in rewrites.items()
+        if src and dst and not src.startswith("_")
+    ]
 
 
 def _load_validation(path: Path) -> ValidationConfig:
