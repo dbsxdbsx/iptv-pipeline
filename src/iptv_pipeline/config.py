@@ -33,8 +33,15 @@ def load_lines(path: Path) -> list[str]:
 @dataclass
 class GroupRule:
     name: str
+    #: 频道名关键字（归一化后做子串匹配），第一级判定依据
     match: list[str]
     priority_names: list[str] = field(default_factory=list)
+    #: 上游分组名精确匹配集合（归一化后的 key），第二级判定依据
+    upstream: set[str] = field(default_factory=set)
+    #: 上游分组名子串匹配（如省份名，可覆盖「☘️四川频道」这类带装饰的变体）
+    upstream_match: list[str] = field(default_factory=list)
+    #: cn / global / auto，决定 cn.m3u 与 global.m3u 的归属
+    scope: str = "auto"
 
 
 @dataclass(frozen=True)
@@ -60,8 +67,15 @@ class Config:
     #: 规范名列表（保序，用于产出排序参考）
     canonical_names: list[str]
     blacklist: list[str]
+    #: 按判定优先级排列（groups.json 的 order）：同一频道命中多条规则时靠前者胜出
     group_rules: list[GroupRule]
     default_group: str
+    #: 按展示顺序排列的分组名（groups.json 的 display_order，缺省时同 order）。
+    #: 判定优先级要「题材优先于地域」，展示顺序要「常看的排前面」，两者结论不同，
+    #: 合成一个字段就必然牺牲一边。
+    display_order: list[str] = field(default_factory=list)
+    #: 境外兜底分组：前两级都没命中且频道名不含汉字时归入。空串表示关闭该级。
+    foreign_group: str = ""
     validation: ValidationConfig = field(default_factory=ValidationConfig)
 
     @classmethod
@@ -70,7 +84,7 @@ class Config:
         blacklist = [kw.lower() for kw in load_lines(config_dir / "blacklist.txt")]
 
         alias_to_canonical, canonical_names = _load_aliases(config_dir / "aliases.json")
-        group_rules, default_group = _load_groups(config_dir / "groups.json")
+        groups = _load_groups(config_dir / "groups.json")
         validation = _load_validation(config_dir / "validation.json")
 
         return cls(
@@ -78,10 +92,27 @@ class Config:
             alias_to_canonical=alias_to_canonical,
             canonical_names=canonical_names,
             blacklist=blacklist,
-            group_rules=group_rules,
-            default_group=default_group,
+            group_rules=groups.rules,
+            default_group=groups.default_group,
+            display_order=groups.display_order,
+            foreign_group=groups.foreign_group,
             validation=validation,
         )
+
+    def group_scope(self, group_name: str) -> str:
+        """查分组的 cn/global 归属；未登记的分组（含 default_group）返回 auto。"""
+        for rule in self.group_rules:
+            if rule.name == group_name:
+                return rule.scope
+        return "auto"
+
+    def group_display_index(self, group_name: str) -> int:
+        """查分组的展示序号；未登记的分组排到所有已登记分组之后。"""
+        names = self.display_order or [rule.name for rule in self.group_rules]
+        try:
+            return names.index(group_name)
+        except ValueError:
+            return len(names)
 
 
 def _load_aliases(path: Path) -> tuple[dict[str, str], list[str]]:
@@ -103,12 +134,24 @@ def _load_aliases(path: Path) -> tuple[dict[str, str], list[str]]:
     return mapping, canonical_names
 
 
-def _load_groups(path: Path) -> tuple[list[GroupRule], str]:
+@dataclass(frozen=True)
+class GroupConfig:
+    rules: list[GroupRule]
+    default_group: str
+    foreign_group: str
+    display_order: list[str]
+
+
+def _load_groups(path: Path) -> GroupConfig:
+    from .normalize import normalize_group_key
+
     if not path.exists():
-        return [], "其他"
+        return GroupConfig(rules=[], default_group="其他", foreign_group="", display_order=[])
     data = json.loads(path.read_text(encoding="utf-8"))
     default_group = data.get("default_group", "其他")
+    foreign_group = data.get("foreign_group", "")
     order = data.get("order", [])
+    display_order = data.get("display_order", []) or list(order)
     groups_data = data.get("groups", {})
 
     rules: list[GroupRule] = []
@@ -121,9 +164,23 @@ def _load_groups(path: Path) -> tuple[list[GroupRule], str]:
                 name=name,
                 match=[m.lower() for m in g.get("match", [])],
                 priority_names=g.get("priority_names", []),
+                upstream={
+                    key for key in (normalize_group_key(u) for u in g.get("upstream", [])) if key
+                },
+                upstream_match=[
+                    key
+                    for key in (normalize_group_key(u) for u in g.get("upstream_match", []))
+                    if key
+                ],
+                scope=str(g.get("scope", "auto")),
             )
         )
-    return rules, default_group
+    return GroupConfig(
+        rules=rules,
+        default_group=default_group,
+        foreign_group=foreign_group,
+        display_order=display_order,
+    )
 
 
 def _load_validation(path: Path) -> ValidationConfig:

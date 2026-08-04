@@ -12,7 +12,7 @@
 - **多源聚合**：`config/upstreams.txt` 配置任意多个上游（`.m3u` / `.m3u8` / `.txt`），并发拉取。
 - **频道归一化**：`config/aliases.json` 把 `CCTV1` / `CCTV-1` / `央视1台` 等归并为规范名 `CCTV-1`。
 - **跨源去重**：同名 + 同 URL 的流只保留一条；同频道的多条不同线路自动聚合。
-- **分组排序**：`config/groups.json` 按 央视 / 卫视 / 港澳台 / 国际 分组，组内按优先级 + 自然序排序。
+- **分组排序**：`config/groups.json` 分 央视 / 卫视 / 地方台 / 港澳台 / 影视剧集 / 体育 / 少儿 / 纪录 / 春晚 / 音乐 / 国际 共 11 个桶。判定分三级——频道名关键字（高置信）→ 上游 `group-title` 映射（补地方台与点播剧集这类无名字特征的召回）→ 境外兜底（不含汉字归国际）。境内按题材分桶、境外统一进国际，组内按优先级 + 自然序排序。`order`（判定优先级）与 `display_order`（产物与侧栏顺序）分开配置。
 - **黑名单过滤**：`config/blacklist.txt` 关键字命中频道名或 URL 即剔除（占位、成人、低质中转域名等）。
 - **增强 L0 快筛**：校验 HTTP 状态、响应体、HTML/JSON 错误页、HLS 结构与有限 VOD；明确硬失败不会进入 stable。
 - **真实媒体深验**：FFprobe 识别视频轨/codec/分辨率，FFmpeg 下载子资源并解码数秒；strict stable 还必须通过 GStreamer discoverer。当前无法等价注入 HLS 子请求头的线路 fail closed，仅保留在 `all`。
@@ -83,10 +83,10 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 
 | 模块 | 职责 |
 |------|------|
-| `config.py` | 加载上游、别名、黑名单、分组和严格验证参数 |
+| `config.py` | 加载上游、别名、黑名单、分组（判定优先级 / 展示顺序 / cn-global scope）和严格验证参数 |
 | `fetch.py` | 并发拉取上游，失败降级跳过 |
-| `parse.py` | M3U / TXT(#genre#) 自动识别解析 |
-| `normalize.py` | 归一化 key、黑名单、去重、分组、自然排序 |
+| `parse.py` | M3U / TXT(#genre#) 自动识别解析，保留上游分组名 |
+| `normalize.py` | 归一化 key、黑名单、去重、三级分组判定、自然排序 |
 | `probe.py` | aiohttp 增强 L0，识别错误页、空 HLS、有限 VOD和网络失败 |
 | `deep_probe.py` | 有界并发 FFprobe 元数据检查、FFmpeg 短时解码与 GStreamer 兼容门禁 |
 | `state.py` | broad 连续失败计数；stable 的 PASS / GRACE / REJECT 状态机 |
@@ -101,7 +101,11 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 - [x] FFprobe 元数据检查 + FFmpeg 短时解码 + GStreamer discoverer；无法执行 GStreamer 等价验证的线路 fail closed
 - [x] 产出 `stable.m3u`、`meta.json`、generation manifest 与跨轮健康状态
 - [x] 公共请求头解析、深验和 M3U 透传
+- [x] 保留上游 `group-title` / `#genre#` 并按三级判定分 11 个桶，「其他」从 86% 降到 0.6%
 - [ ] 持续审核 `meta.json.alias_candidates` 并补充 `config/aliases.json`
+- [ ] 补 `config/groups.json` 的 `upstream` 表：`数字频道`、`4K频道`、`APTV专享` 等混杂分组暂未映射
+- [ ] 替换失效上游（`fanmingming` 连不上、`YueChan/APTV.m3u` 与 `aktv.space` 均 404）
+- [ ] 收敛境外供给：iptv-org 的三个全球 categories 子集贡献了约 62% 的候选，改按语言 / 国家取子集
 - [ ] 有国内 VPS / NAS 后增加独立国内验证视角；在此之前不宣称国内运营商可播率
 - [ ] 可选：稳定源质量闭环后再评估关键字搜索增量采集
 
@@ -113,6 +117,7 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 - **验证范围迁移**：`meta.json.quality_scope` 与状态文件记录当前准入定义；门禁定义变化时旧 PASS/GRACE 会失效，首轮新基线必须手动触发 workflow 并显式批准 `approve_quality_scope_migration`。
 - **公开仓库**：定时 output commit 同时作为仓库活动；验证 job 无写权限，只有通过质量门禁的发布 job 能更新 output。
 - **产物公开**：客户端只内置公开产物 URL，不接触本仓库的采集逻辑与凭据。
+- **分组的三条硬约束**：关键字必须压过上游分组；不给 iptv-org 的英文全球分类建映射；分组要等一个频道的所有流归并完再判。繁体变体必须显式列出（iptv-org 的中文频道一律用繁体）。`order` 与 `display_order` 结论不同、必须分开配置。详见 `AGENTS.md` 与 `config/groups.json` 的 `_comment`，守卫测试在 `tests/test_config.py`。
 
 ## References
 

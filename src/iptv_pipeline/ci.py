@@ -180,6 +180,7 @@ def publish(
         stable,
         state,
         output_dir,
+        cfg=cfg,
         generation=generation,
         network_vantage=network_vantage,
     )

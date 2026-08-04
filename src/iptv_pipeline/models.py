@@ -16,6 +16,9 @@ class Stream:
     name: str
     #: 原始频道名（上游里写的名字），用于调试与别名补充
     raw_name: str = ""
+    #: 上游原本的分组名（m3u 的 group-title / txt 的 #genre# 段名）。
+    #: 分组判定的第二级依据，也是唯一能识别地方台与点播剧集频道的信息来源。
+    raw_group: str = ""
     #: 台标 URL（m3u tvg-logo）
     logo: str = ""
     #: EPG 频道 id（m3u tvg-id）
@@ -56,6 +59,8 @@ class Stream:
             self.logo = other.logo
         if not self.tvg_id and other.tvg_id:
             self.tvg_id = other.tvg_id
+        if not self.raw_group and other.raw_group:
+            self.raw_group = other.raw_group
 
 
 @dataclass

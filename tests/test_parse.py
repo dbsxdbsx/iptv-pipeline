@@ -31,6 +31,19 @@ def test_parse_m3u_extracts_attrs_and_name():
     assert first.source == "s1"
 
 
+def test_parse_m3u_keeps_upstream_group_title():
+    streams = parse_m3u(M3U_SAMPLE, source="s1")
+    assert [s.raw_group for s in streams] == ["央视", "卫视"]
+
+
+def test_parse_txt_keeps_genre_section_as_group():
+    streams = parse_txt(TXT_SAMPLE, source="s2")
+    by_name = {s.name: s.raw_group for s in streams}
+    assert by_name["CCTV-1"] == "央视"
+    assert by_name["CCTV-2"] == "央视"
+    assert by_name["湖南卫视"] == "卫视"
+
+
 def test_parse_m3u_ignores_directive_lines():
     streams = parse_m3u(M3U_SAMPLE, source="s1")
     # #EXTVLCOPT 不应被当作 URL

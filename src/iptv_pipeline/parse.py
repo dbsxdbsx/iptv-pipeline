@@ -107,6 +107,7 @@ def parse_m3u(text: str, source: str) -> list[Stream]:
                 "name": _display_name(line) or attrs.get("tvg-name", ""),
                 "logo": attrs.get("tvg-logo", ""),
                 "tvg_id": attrs.get("tvg-id", ""),
+                "group": attrs.get("group-title", ""),
             }
             pending_headers.update(_headers_from_attrs(attrs))
         elif line.startswith(("#EXTVLCOPT:", "#KODIPROP:", "#EXTHTTP:")):
@@ -124,6 +125,7 @@ def parse_m3u(text: str, source: str) -> list[Stream]:
                         url=url,
                         name=name,
                         raw_name=name,
+                        raw_group=(pending or {}).get("group", ""),
                         logo=(pending or {}).get("logo", ""),
                         tvg_id=(pending or {}).get("tvg_id", ""),
                         source=source,
@@ -139,6 +141,7 @@ def parse_m3u(text: str, source: str) -> list[Stream]:
 def parse_txt(text: str, source: str) -> list[Stream]:
     """解析 TXT：'分组名,#genre#' 定义分组；'频道名,URL1#URL2' 定义频道（可多 URL）。"""
     streams: list[Stream] = []
+    current_group = ""
 
     for raw in text.splitlines():
         line = raw.strip()
@@ -150,8 +153,9 @@ def parse_txt(text: str, source: str) -> list[Stream]:
         name = name_part.strip()
         url_part = url_part.strip()
 
-        # 分组分隔行，如 "央视,#genre#"
+        # 分组分隔行，如 "央视,#genre#"：切换当前分组，后续频道都归入它
         if url_part.lower() == "#genre#":
+            current_group = name
             continue
         if not name or not url_part:
             continue
@@ -166,6 +170,7 @@ def parse_txt(text: str, source: str) -> list[Stream]:
                         url=url,
                         name=name,
                         raw_name=name,
+                        raw_group=current_group,
                         source=source,
                         headers=headers,
                     )

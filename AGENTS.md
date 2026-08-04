@@ -46,12 +46,17 @@ config/upstreams.txt → fetch → parse(headers/m3u/txt) → normalize
 - **验证 scope 不变式**：改变严格准入定义必须同步升级 `VALIDATION_SCOPE`；旧 PASS/GRACE 不得跨 scope 宽限，首轮基线只能通过手动 workflow 的 `approve_quality_scope_migration` 显式批准。
 - **公共头安全**：只透传 UA/Referer/Origin/Accept 类头，禁止 Cookie、Authorization、CR/LF 进入产物或日志；FFmpeg 命令不得拼 shell 字符串。
 - **网络隔离**：CI 的 prepare/verify 必须在无凭据容器内运行，并通过 `DOCKER-USER` 阻断私网、metadata、组播目标；禁止改回 host `OUTPUT` 防火墙（会切断 Actions runner 心跳）。
-- **别名表** `config/aliases.json` 是唯一需要人工边跑边补的「脏活」。新增频道归并写这里，不要硬编码进代码。
+- **分组判定三级顺序**（`normalize.assign_group`，详见 `config/groups.json` 的 `_comment`）：频道名关键字 → 上游分组映射 → 境外兜底 → `default_group`。三条都不能动：(1) **关键字必须压过上游分组**，反过来会让 CCTV-5 被某些上游的「咪咕赛事」拽出央视，而产物里看不出任何异常；(2) **故意不给 iptv-org 的英文分类建映射**（`General` / `News` / `Movies` 是全球分类），否则含汉字的国内频道会被误判成国际，也会让 479 条境外体育台淹掉几十条国内体育台；(3) **分组必须等一个频道的所有流都归并完再判**，同一频道来自多个上游、各家给的分组名不同，只看第一条流会丢掉后来那条才带的信息（内置源 bjzhou 整份没有 `group-title` 且排在 `upstreams` 首位）。繁体变体必须显式列出，iptv-org 的中文频道一律用繁体，漏写「衛視」就会把北京衛視丢进「其他」。
+- **`order` 与 `display_order` 是两件事**：`order` 是判定优先级，要「题材优先于地域」——地方台的关键字是行政区名，排在题材桶之前会把「山东体育」「四川妇女儿童」抢走（实测体育少 6 个、少儿少 10 个，而分布表看上去依然合理），所以它必须垫在所有题材桶之后当残余桶；`display_order` 是产物与侧栏顺序，要「常看的排前面」——地方台有四百多频道，排第 10 位意味着用户在遥控器上按九次右键。两个列表必须含相同分组名，漂移时那一整组会被静默甩到末尾。
+- **`cn.m3u` / `global.m3u` 归属由 `groups.json` 的 `scope` 驱动**，不得写回代码里的名单：写死时每加一个分组桶都要记得同步改判定函数，忘了就整组判成境外，而这个错没有任何报错出口。漏写 `scope` 会静默落到 `auto` 走汉字启发式，对「影视剧集」里 CHC / NewTV 这类拉丁名频道就会判错。
+- **别名表** `config/aliases.json` 与 **分组的 `upstream` 表**是需要人工边跑边补的两处「脏活」。新增频道归并写前者，新上游带来的新分组名写后者，都不要硬编码进代码。
 - 新增依赖优先 `uv add`，不手改 `uv.lock`。
 - 所有测试必须真实断言；改解析/归一化/准入/状态机/发布契约须补对应测试。
 
 ## Notes
 
 - 上游失效：在 `config/upstreams.txt` 行首加 `#` 停用，不要直接删（方便恢复）。
+- **2026-08-04 实测三个上游已死**：`live.fanmingming.cn`（连不上）、`YueChan/Live/main/APTV.m3u`（404）、`aktv.space/live.m3u`（404）。死的正好是「台标事实标准」与「港台专项」两条，是候选池偏薄的直接原因之一。尚未在 `upstreams.txt` 里停用，待供给扩容一并处理。
+- 候选池的境外占比很高（约 62% 归入「国际」），根源是 `upstreams.txt` 订阅了 iptv-org 的三个**全球** categories 子集（news / sports / movies 合计 2274 条，绝大多数是小语种台）。分组修复只是把它们从「其他」里正确标注出来，真要收敛体积应改订阅为按语言 / 国家取子集。
 - CI 产物用 `force-with-lease` 单提交写 `output` 分支，避免历史膨胀并防并发覆盖。
 - 关键字搜索增量会扩大坏源池，只有 stable 质量指标稳定后才评估。

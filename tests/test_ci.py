@@ -286,6 +286,7 @@ def test_previous_generation_and_hashes_must_match(tmp_path):
         stable,
         state,
         output,
+        cfg=_config(),
         generation="g1",
         network_vantage="test",
     )

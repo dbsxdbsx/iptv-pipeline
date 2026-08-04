@@ -3,15 +3,18 @@
 from iptv_pipeline.config import Config, GroupRule
 from iptv_pipeline.models import Stream
 from iptv_pipeline.normalize import (
+    assign_group,
     build_channels,
     is_chinese_channel,
     is_ipv6_url,
+    normalize_group_key,
     normalize_key,
+    split_upstream_groups,
 )
 
 
-def _cfg() -> Config:
-    return Config(
+def _cfg(**overrides) -> Config:
+    defaults = dict(
         upstreams=[],
         alias_to_canonical={
             normalize_key("CCTV1"): "CCTV-1",
@@ -23,11 +26,29 @@ def _cfg() -> Config:
         canonical_names=["CCTV-1", "CCTV-5+", "湖南卫视"],
         blacklist=["成人", "测试"],
         group_rules=[
-            GroupRule(name="央视", match=["cctv", "央视"], priority_names=["CCTV-1", "CCTV-5+"]),
-            GroupRule(name="卫视", match=["卫视"], priority_names=["湖南卫视"]),
+            GroupRule(
+                name="央视",
+                match=["cctv", "央视"],
+                priority_names=["CCTV-1", "CCTV-5+"],
+                upstream={"央视频道"},
+                scope="cn",
+            ),
+            GroupRule(name="卫视", match=["卫视"], priority_names=["湖南卫视"], scope="cn"),
+            GroupRule(name="体育", match=["体育"], upstream={"咪咕赛事"}, scope="cn"),
+            GroupRule(
+                name="地方台",
+                match=[],
+                upstream={"地方频道"},
+                upstream_match=["四川"],
+                scope="cn",
+            ),
+            GroupRule(name="国际", match=["cnn"], scope="global"),
         ],
         default_group="其他",
+        foreign_group="国际",
     )
+    defaults.update(overrides)
+    return Config(**defaults)
 
 
 def test_normalize_key_strips_noise_and_separators():
@@ -111,6 +132,85 @@ def test_grouping_and_default():
     assert by_name["CCTV-1"] == "央视"
     assert by_name["湖南卫视"] == "卫视"
     assert by_name["某小众台"] == "其他"
+
+
+def test_normalize_group_key_strips_decoration():
+    assert normalize_group_key("☘️四川频道") == "四川频道"
+    assert normalize_group_key(" 卫视频道 ") == "卫视频道"
+    assert normalize_group_key("央视IPV4") == "央视ipv4"
+    assert normalize_group_key("4K8K频道") == "4k8k频道"
+
+
+def test_split_upstream_groups_handles_multi_value():
+    # iptv-org 用分号承载多标签
+    assert split_upstream_groups("Culture;Documentary;Travel") == [
+        "culture",
+        "documentary",
+        "travel",
+    ]
+    assert split_upstream_groups("") == []
+    assert split_upstream_groups(";;") == []
+
+
+def test_channel_name_keyword_beats_upstream_group():
+    """CCTV-5 在部分上游里被塞进「咪咕赛事」，但用户找它只会去央视。
+
+    这条顺序一旦反过来，央视会被上游的题材分组零散拆走，而产物里看不出任何异常。
+    """
+    assert assign_group("CCTV-5", ["咪咕赛事"], _cfg()) == "央视"
+
+
+def test_upstream_group_recalls_what_keywords_cannot():
+    """地方台没有可靠的名字特征，只有上游分组认得它们。"""
+    cfg = _cfg()
+    assert assign_group("东丰", ["地方频道"], cfg) == "地方台"
+    # 带装饰的变体走 upstream_match 子串匹配
+    assert assign_group("万荣综合", ["☘️四川频道"], cfg) == "地方台"
+
+
+def test_foreign_fallback_only_applies_to_non_cjk_names():
+    cfg = _cfg()
+    # 无名字特征、无可信上游分组、不含汉字 -> 境外兜底
+    assert assign_group("24 Kanal (720p)", ["General"], cfg) == "国际"
+    # 含汉字则不得进国际：iptv-org 的英文分类故意不做映射，正是为了避免这种误判
+    assert assign_group("和政电视台", ["General"], cfg) == "其他"
+
+
+def test_foreign_fallback_can_be_disabled():
+    cfg = _cfg(foreign_group="")
+    assert assign_group("24 Kanal (720p)", ["General"], cfg) == "其他"
+
+
+def test_group_uses_all_streams_not_just_the_first():
+    """同一频道来自多个上游时，只看第一条流会丢掉后来那条才带的分组信息。
+
+    内置源 bjzhou 整份都没有 group-title，它排在 upstreams 首位。
+    """
+    streams = [
+        Stream(url="http://a/1", name="", raw_name="东丰", raw_group=""),
+        Stream(url="http://b/1", name="", raw_name="东丰", raw_group="地方频道"),
+    ]
+    channels = build_channels(streams, _cfg())
+    assert channels[0].group == "地方台"
+
+
+def test_display_order_is_independent_of_precedence():
+    """判定要「题材优先于地域」，展示要「常看的排前面」，两者结论不同。"""
+    cfg = _cfg(display_order=["地方台", "央视", "卫视", "体育", "国际", "其他"])
+    streams = [
+        Stream(url="http://a/1", name="", raw_name="CCTV1"),
+        Stream(url="http://b/1", name="", raw_name="东丰", raw_group="地方频道"),
+    ]
+    channels = build_channels(streams, cfg)
+    # 地方台在判定顺序里靠后（题材优先），但展示时排在央视之前
+    assert [c.group for c in channels] == ["地方台", "央视"]
+
+
+def test_group_scope_lookup():
+    cfg = _cfg()
+    assert cfg.group_scope("央视") == "cn"
+    assert cfg.group_scope("国际") == "global"
+    assert cfg.group_scope("其他") == "auto"  # 未登记的分组
 
 
 def test_sort_priority_and_natural_order():

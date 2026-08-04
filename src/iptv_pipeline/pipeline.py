@@ -102,6 +102,7 @@ async def run_pipeline(
         stable_channels,
         state,
         output_dir,
+        cfg=cfg,
         generation=stats.generation,
         network_vantage=network_vantage,
     )
@@ -178,6 +179,7 @@ def write_outputs(
     state: HealthState,
     output_dir: Path,
     *,
+    cfg: Config,
     generation: str,
     network_vantage: str,
 ) -> None:
@@ -189,8 +191,8 @@ def write_outputs(
         "stable.txt": to_txt(stable_channels),
     }
 
-    cn = [c for c in stable_channels if _is_cn_channel(c)]
-    global_ = [c for c in stable_channels if not _is_cn_channel(c)]
+    cn = [c for c in stable_channels if _is_cn_channel(c, cfg)]
+    global_ = [c for c in stable_channels if not _is_cn_channel(c, cfg)]
     files["cn.m3u"] = to_m3u(cn, state=state)
     files["global.m3u"] = to_m3u(global_, state=state)
     files["meta.json"] = to_meta_json(
@@ -221,14 +223,16 @@ def write_outputs(
     )
 
 
-#: 明确归入国内 / 国际的分组
-_CN_GROUPS = {"央视", "卫视", "港澳台"}
+def _is_cn_channel(ch: Channel, cfg: Config) -> bool:
+    """cn/global 归属：先看分组在 groups.json 里登记的 scope，
+    再对「其他」这类含混分组用汉字启发式兜底。
 
-
-def _is_cn_channel(ch: Channel) -> bool:
-    """cn/global 归属：先看分组，再对"其他"这类含混分组用汉字启发式兜底。"""
-    if ch.group in _CN_GROUPS:
+    归属必须由配置驱动：写死名单时每加一个分组桶都要记得同步改这里，
+    忘了就会把「地方台」整组判成境外，而 cn.m3u 的错不会有任何报错。
+    """
+    scope = cfg.group_scope(ch.group)
+    if scope == "cn":
         return True
-    if ch.group == "国际":
+    if scope == "global":
         return False
     return is_chinese_channel(ch.name)
