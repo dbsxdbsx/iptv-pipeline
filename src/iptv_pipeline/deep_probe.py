@@ -10,12 +10,14 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
 
 from .config import ValidationConfig
+from .gst_play_probe import build_worker_command, parse_worker_output
 from .models import Stream
 from .safety import sanitize_headers, supports_deep_probe
 
@@ -331,16 +333,41 @@ def _is_finite_vod(stream: Stream, metadata: dict) -> bool:
     return isinstance(duration, (int, float)) and 0 < duration < 12 * 60 * 60
 
 
+async def _probe_gstreamer_playbin(
+    stream: Stream,
+    config: ValidationConfig,
+    headers: dict[str, str],
+) -> tuple[DeepProbeStatus, str, bool | None]:
+    """带头源走 playbin 短播探针（与 App element-setup/deep-element-added 同构）。"""
+    command = build_worker_command(
+        python_executable=sys.executable,
+        url=stream.url,
+        headers=headers,
+        timeout_seconds=config.gstreamer_timeout_seconds,
+    )
+    result = await _run_process(command, config.gstreamer_timeout_seconds + 5)
+    parsed = parse_worker_output(result.stdout, result.returncode, result.timed_out)
+    if parsed.status == "pass":
+        return DeepProbeStatus.PASS, parsed.reason, True
+    if parsed.status == "soft_fail":
+        return DeepProbeStatus.SOFT_FAIL, parsed.reason, None
+    if parsed.status == "unsupported":
+        return DeepProbeStatus.UNSUPPORTED, parsed.reason, None
+    compatible = False if parsed.status == "hard_fail" else None
+    return DeepProbeStatus.HARD_FAIL, parsed.reason, compatible
+
+
 async def _probe_gstreamer(
     stream: Stream,
     config: ValidationConfig,
 ) -> tuple[DeepProbeStatus, str, bool | None]:
     if not config.require_gstreamer:
         return DeepProbeStatus.PASS, "gstreamer_disabled", None
-    if sanitize_headers(stream.headers):
-        # gst-discoverer CLI 无法安全注入 HLS 子请求头。strict stable 必须 fail closed；
-        # 这些线路保留在 all，待有等价于 App source-setup 的验证器后再准入。
-        return DeepProbeStatus.HARD_FAIL, "gstreamer_custom_headers_unsupported", None
+
+    headers = sanitize_headers(stream.headers)
+    if headers:
+        # gst-discoverer CLI 注入不了 HLS 子请求头；改走 playbin 双信号注入探针。
+        return await _probe_gstreamer_playbin(stream, config, headers)
 
     gstreamer_binary = _find_gstreamer_discoverer()
     if gstreamer_binary is None:

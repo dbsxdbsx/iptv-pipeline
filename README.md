@@ -16,7 +16,7 @@
 - **黑名单过滤**：`config/blacklist.txt` 关键字命中频道名或 URL 即剔除（占位、成人、低质中转域名等）。
 - **台标改道**：`config/logo_rewrites.json` 把上游内嵌的失效图床前缀换成可达镜像。台标地址是上游 m3u 里的字符串，上游不修就只能自己改道，而 `fanmingming` 是国内台标的事实标准、被大量上游引用，它一挂停用上游也解决不了（当前改道 1023 条）。
 - **增强 L0 快筛**：校验 HTTP 状态、响应体、HTML/JSON 错误页、HLS 结构与有限 VOD；明确硬失败不会进入 stable。
-- **真实媒体深验**：FFprobe 识别视频轨/codec/分辨率，FFmpeg 下载子资源并解码数秒；strict stable 还必须通过 GStreamer discoverer。当前无法等价注入 HLS 子请求头的线路 fail closed，仅保留在 `all`。
+- **真实媒体深验**：FFprobe 识别视频轨/codec/分辨率，FFmpeg 下载子资源并解码数秒；strict stable 还必须通过 GStreamer 门禁。无自定义头走 `gst-discoverer`；带 UA/Referer 的线路走 playbin 短播探针（`element-setup` + `deep-element-added`，与小董电视注入路径同构）。
 - **正向准入状态机**：新流必须 `PASS` 才进入 stable；仅基础设施软失败可在最近一次 PASS 后短时 `GRACE`；4xx、格式或解码失败立即移出。
 - **请求头透传**：保留公开安全的 User-Agent / Referer / Origin 等头，验证条件与小董电视播放条件一致；Cookie/Authorization 不进入公共产物。
 - **多格式产出**：`stable.m3u` / `stable.txt`（严格）、`all.m3u` / `all.txt`（候选），以及从 stable 派生的 `cn.m3u` / `global.m3u`；`meta.json` 提供来源和验证证据。
@@ -60,7 +60,7 @@ https://raw.githubusercontent.com/<owner>/iptv-pipeline/output/stable.m3u
 
 投递契约：`config/delivery.json` 写入 `manifest.json` 的有序 `endpoints` / `manifest_endpoints`（schema v2）。小董电视内置源先拉 manifest 再按序回退 playlist；本地还写死了 GitHub raw + jsDelivr 引导地址，管道尚未发 v2 也能工作。以后有自有域名时，把主地址插到 `delivery.json` 列表最前即可，**不必发版 App**。
 
-`stable` 的含义是“从该轮 GitHub 托管 runner 网络视角可由 FFmpeg 解码并通过 GStreamer discoverer”，不是对所有国家、运营商或终端平台的绝对可播承诺。当前验证器无法等价覆盖的自定义请求头、IPv6 / 非 HTTP 流只保留在 `all.m3u`。
+`stable` 的含义是“从该轮 GitHub 托管 runner 网络视角可由 FFmpeg 解码并通过 GStreamer 门禁（discoverer 或带头 playbin 短播探针）”，不是对所有国家、运营商或终端平台的绝对可播承诺。IPv6 / 非 HTTP 流仍只保留在 `all.m3u`。
 
 ## 架构
 
@@ -95,6 +95,7 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 | `normalize.py` | 归一化 key、黑名单、台标改道、去重、三级分组判定、自然排序 |
 | `probe.py` | aiohttp 增强 L0，识别错误页、空 HLS、有限 VOD和网络失败 |
 | `deep_probe.py` | 有界并发 FFprobe 元数据检查、FFmpeg 短时解码与 GStreamer 兼容门禁 |
+| `gst_play_probe.py` | 带头源的 playbin 短播探针（子进程；双信号注入头） |
 | `state.py` | broad 连续失败计数；stable 的 PASS / GRACE / REJECT 状态机 |
 | `rank.py` | 按深验状态、历史成功、延迟和多源佐证选择每频道最多 5 条，优先不同 host |
 | `artifacts.py` / `ci.py` | CI 候选/分片结果契约、完整性检查与发布质量门禁 |
@@ -104,9 +105,9 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 
 ## TODOs
 
-- [x] FFprobe 元数据检查 + FFmpeg 短时解码 + GStreamer discoverer；无法执行 GStreamer 等价验证的线路 fail closed
+- [x] FFprobe 元数据检查 + FFmpeg 短时解码 + GStreamer 门禁（discoverer / 带头 playbin 短播探针）
 - [x] 产出 `stable.m3u`、`meta.json`、generation manifest 与跨轮健康状态
-- [x] 公共请求头解析、深验和 M3U 透传
+- [x] 公共请求头解析、深验和 M3U 透传；带头 HLS 经 playbin 双信号注入后再准入 stable
 - [x] 保留上游 `group-title` / `#genre#` 并按三级判定分 11 个桶，「其他」从 86% 降到 0.6%
 - [x] 修复失效上游并补上游存活观测：`fanmingming` 改走 GitHub raw（自建 CDN 挂了但仓库内容完好）、`YueChan` 换成改名后的 `IPTV.m3u`、`aktv.space` 停用并以 iptv-org 的 hk/tw/mo 子集补港澳台；14/14 拉取成功，候选池 3474 → 3604
 - [x] 把 `live.fanmingming.cn` / `.com` 的 1023 条死台标改道到 GitHub raw
@@ -121,7 +122,7 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 ## Notes
 
 - **IPv6 与海外 runner**：GitHub 托管 runner 不支持原生 IPv6 出网（[官方 issue #668](https://github.com/actions/runner-images/issues/668)）。未验证 IPv6 不进 stable；WARP 也不等同中国大陆网络，不能作为国内可播证明。
-- **FFmpeg 与 GStreamer**：`stable` 线路必须同时经过两套栈；需 UA/Referer 的线路因 `gst-discoverer` CLI 无法注入 HLS 子请求头，暂只进入 `all`。验证镜像固定 Python 基础镜像 digest 及 FFmpeg/GStreamer 包版本；升级工具链必须同步升级 `VALIDATION_SCOPE`。Windows/Android 与 Linux runner 仍可能存在 TLS/CDN/插件差异。
+- **FFmpeg 与 GStreamer**：`stable` 线路必须同时经过两套栈。无自定义头仍用 `gst-discoverer`；需 UA/Referer 的线路改用 `python -m iptv_pipeline.gst_play_probe`（playbin 短播 + 头注入）。验证镜像固定 Python 基础镜像 digest、FFmpeg/GStreamer 包与 PyGObject（`python3-gi`）版本；升级工具链或改变准入定义必须同步升级 `VALIDATION_SCOPE`。Debian bookworm 镜像通常只有 legacy `hlsdemux`（无 `hlsdemux2`），探针会按 App 规则回退旧 `playbin`。Windows/Android 与 Linux runner 仍可能存在 TLS/CDN/插件差异。
 - **状态与仓库历史**：`.state/health.json` 与产物一起放在 force-with-lease 更新的 `output` 单提交中，main 不再每 6 小时累积大状态文件。
 - **验证范围迁移**：`meta.json.quality_scope` 与状态文件记录当前准入定义；门禁定义变化时旧 PASS/GRACE 会失效，首轮新基线必须手动触发 workflow 并显式批准 `approve_quality_scope_migration`。
 - **公开仓库**：定时 output commit 同时作为仓库活动；验证 job 无写权限，只有通过质量门禁的发布 job 能更新 output。

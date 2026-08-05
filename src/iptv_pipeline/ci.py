@@ -134,6 +134,18 @@ async def verify(
         raise RuntimeError("ffprobe/ffmpeg 未安装")
     if cfg.validation.require_gstreamer and shutil.which("gst-discoverer-1.0") is None:
         raise RuntimeError("gst-discoverer-1.0 未安装")
+    if cfg.validation.require_gstreamer:
+        try:
+            import gi
+
+            gi.require_version("Gst", "1.0")
+            from gi.repository import Gst
+
+            Gst.init(None)
+            if Gst.ElementFactory.find("playbin") is None:
+                raise RuntimeError("GStreamer playbin 不可用")
+        except Exception as exc:  # noqa: BLE001 - CI 启动时把缺依赖变成可读错误
+            raise RuntimeError(f"GStreamer playbin 探针依赖不可用: {exc}") from exc
     generation, channels, fast_results = read_candidate_bundle(bundle_path)
     candidates = [
         stream

@@ -29,12 +29,19 @@ def test_deep_probe_requires_metadata_and_decoded_frames(monkeypatch):
                 "frame=1\nframe=18\nprogress=end\n",
                 "[freezedetect] freeze_start: 0",
             ),
+            deep_probe._ProcessResult(
+                0,
+                '{"status":"pass","reason":"gstreamer_playbin_video",'
+                '"factory":"playbin","video_buffers":4}',
+                "",
+            ),
         ]
     )
 
     async def fake_run(command: list[str], timeout_seconds: int):
         calls.append(command)
-        assert timeout_seconds == 10
+        if len(calls) <= 2:
+            assert timeout_seconds == 10
         return next(results)
 
     monkeypatch.setattr(deep_probe, "_run_process", fake_run)
@@ -51,16 +58,56 @@ def test_deep_probe_requires_metadata_and_decoded_frames(monkeypatch):
 
     result = asyncio.run(probe_stream(stream, _config()))
 
-    assert result.status == DeepProbeStatus.HARD_FAIL
+    assert result.status == DeepProbeStatus.PASS
     assert result.codec == "h264"
     assert result.decoded_frames == 18
     assert result.freeze_detected
-    assert result.gstreamer_compatible is None
-    assert result.reason == "gstreamer_custom_headers_unsupported"
+    assert result.gstreamer_compatible is True
+    assert result.gstreamer_reason == "gstreamer_playbin_video"
     commands = "\n".join(" ".join(command) for command in calls)
+    assert "iptv_pipeline.gst_play_probe" in commands
     assert "DemoPlayer/1.0" in commands
     assert "Referer: https://example.com/" in commands
     assert "not-public" not in commands
+
+
+def test_deep_probe_header_stream_playbin_hard_fail(monkeypatch):
+    results = iter(
+        [
+            deep_probe._ProcessResult(
+                0,
+                '{"streams":[{"codec_type":"video","codec_name":"h264"}],'
+                '"format":{"format_name":"hls"}}',
+                "",
+            ),
+            deep_probe._ProcessResult(0, "frame=1\nframe=8\nprogress=end\n", ""),
+            deep_probe._ProcessResult(
+                1,
+                '{"status":"hard_fail","reason":"gstreamer_incompatible_or_media_error",'
+                '"factory":"playbin","video_buffers":0}',
+                "",
+            ),
+        ]
+    )
+
+    async def fake_run(command: list[str], timeout_seconds: int):
+        return next(results)
+
+    monkeypatch.setattr(deep_probe, "_run_process", fake_run)
+    result = asyncio.run(
+        probe_stream(
+            Stream(
+                url="https://media.example/live.m3u8",
+                name="HeaderFail",
+                raw_name="HeaderFail",
+                headers={"Referer": "https://ref.example/"},
+            ),
+            _config(),
+        )
+    )
+    assert result.status == DeepProbeStatus.HARD_FAIL
+    assert result.reason == "gstreamer_incompatible_or_media_error"
+    assert result.gstreamer_compatible is False
 
 
 def test_deep_probe_rejects_finite_mp4_before_decode(monkeypatch):

@@ -8,6 +8,13 @@ dependencies = [
     "aiohttp>=3.9",
 ]
 
+[project.optional-dependencies]
+# 仅验证镜像需要：绑定镜像内 Python 3.12，勿用 Debian python3-gi（绑 3.11）。
+# <3.52 以兼容 bookworm 的 girepository-1.0。
+gst = [
+    "PyGObject>=3.42,<3.52",
+]
+
 [project.scripts]
 iptv-pipeline = "iptv_pipeline.main:main"
 iptv-pipeline-ci = "iptv_pipeline.ci:main"

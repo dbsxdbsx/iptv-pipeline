@@ -7,6 +7,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates=20230311+deb12u1 \
         ffmpeg=7:5.1.9-0+deb12u1 \
+        gcc=4:12.2.0-3 \
+        gir1.2-gst-plugins-base-1.0=1.22.0-3+deb12u6 \
+        gir1.2-gstreamer-1.0=1.22.0-2+deb12u1 \
         glib-networking=2.74.0-4 \
         gstreamer1.0-libav=1.22.0-2 \
         gstreamer1.0-plugins-bad=1.22.0-4+deb12u7 \
@@ -15,9 +18,13 @@ RUN apt-get update \
         gstreamer1.0-plugins-good=1.22.0-5+deb12u3 \
         gstreamer1.0-plugins-ugly=1.22.0-2+deb12u2 \
         gstreamer1.0-tools=1.22.0-2+deb12u1 \
+        libcairo2-dev=1.16.0-7 \
+        libffi-dev=3.4.4-1 \
+        libgirepository1.0-dev=1.74.0-3 \
         libgstreamer1.0-0=1.22.0-2+deb12u1 \
         libgstreamer-plugins-base1.0-0=1.22.0-3+deb12u6 \
         libgstreamer-plugins-bad1.0-0=1.22.0-4+deb12u7 \
+        pkg-config=1.8.1-1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN command -v gst-discoverer-1.0 \
@@ -25,6 +32,7 @@ RUN command -v gst-discoverer-1.0 \
     && gst-inspect-1.0 --version | grep -q 'GStreamer 1\.22\.0' \
     && gst-inspect-1.0 hlsdemux >/dev/null \
     && gst-inspect-1.0 souphttpsrc >/dev/null \
+    && gst-inspect-1.0 playbin >/dev/null \
     && gst-inspect-1.0 avdec_h264 >/dev/null
 
 WORKDIR /app
@@ -32,7 +40,11 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY config ./config
+COPY uv.lock ./
 
-RUN python -m pip install --no-cache-dir .
+# PyGObject 必须装进镜像自带的 Python 3.12（Debian python3-gi 绑的是 3.11）。
+# 版本与 uv.lock 中 gst extra 对齐，避免 pip 解析漂到需要 girepository-2.0 的 3.52+。
+RUN python -m pip install --no-cache-dir ".[gst]" "PyGObject==3.50.2" \
+    && python -c "import gi; gi.require_version('Gst','1.0'); from gi.repository import Gst; Gst.init(None); assert Gst.ElementFactory.find('playbin') is not None"
 
 ENTRYPOINT ["iptv-pipeline-ci"]
