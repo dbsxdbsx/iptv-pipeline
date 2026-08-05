@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      approve_stable_baseline_reset:
+        description: "仅主动收缩供给时允许重置 stable 数量跌幅基线"
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -267,6 +272,7 @@ jobs:
       - name: 合并状态并执行质量门禁
         env:
           APPROVE_QUALITY_SCOPE_MIGRATION: ${{ inputs.approve_quality_scope_migration || false }}
+          APPROVE_STABLE_BASELINE_RESET: ${{ inputs.approve_stable_baseline_reset || false }}
         run: |
           set -euo pipefail
           publish_args=(
@@ -284,6 +290,9 @@ jobs:
           )
           if [ "${APPROVE_QUALITY_SCOPE_MIGRATION}" = "true" ]; then
             publish_args+=(--approve-quality-scope-migration)
+          fi
+          if [ "${APPROVE_STABLE_BASELINE_RESET}" = "true" ]; then
+            publish_args+=(--approve-stable-baseline-reset)
           fi
           uv run iptv-pipeline-ci publish "${publish_args[@]}"
 

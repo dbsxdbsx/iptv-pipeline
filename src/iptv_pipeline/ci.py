@@ -185,6 +185,7 @@ def publish(
     *,
     network_vantage: str,
     approve_quality_scope_migration: bool = False,
+    approve_stable_baseline_reset: bool = False,
     expected_shard_count: int = 6,
 ) -> None:
     cfg = Config.load(config_dir)
@@ -243,6 +244,7 @@ def publish(
         cfg,
         previous_meta_path,
         approve_quality_scope_migration=approve_quality_scope_migration,
+        approve_stable_baseline_reset=approve_stable_baseline_reset,
     )
     write_outputs(
         broad,
@@ -338,6 +340,7 @@ def _enforce_quality_gate(
     previous_meta_path: Path,
     *,
     approve_quality_scope_migration: bool = False,
+    approve_stable_baseline_reset: bool = False,
 ) -> None:
     channel_count = len(stable)
     stream_keys = [stream.state_key() for channel in stable for stream in channel.streams]
@@ -384,6 +387,13 @@ def _enforce_quality_gate(
             "已批准验证范围迁移: %s -> %s；本轮跳过跨 scope 数量跌幅比较",
             old_scope,
             VALIDATION_SCOPE,
+        )
+        return
+    if approve_stable_baseline_reset:
+        logger.warning(
+            "已批准 stable 基线重置: 上一代 %d 频道 -> 本轮 %d 频道；本轮跳过跌幅比较",
+            previous_count,
+            channel_count,
         )
         return
     drop_ratio = max(0.0, (previous_count - channel_count) / previous_count)
@@ -548,6 +558,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="显式批准验证定义变化后的首轮基线重建",
     )
+    publish_parser.add_argument(
+        "--approve-stable-baseline-reset",
+        action="store_true",
+        help="显式批准主动收缩供给后的 stable 数量基线重置（仍强制最低频道数）",
+    )
     return parser
 
 
@@ -590,6 +605,7 @@ def main(argv: list[str] | None = None) -> int:
                 Path(args.output),
                 network_vantage=args.network_vantage,
                 approve_quality_scope_migration=(args.approve_quality_scope_migration),
+                approve_stable_baseline_reset=(args.approve_stable_baseline_reset),
                 expected_shard_count=args.expected_shard_count,
             )
     except (OSError, RuntimeError, ValueError) as exc:

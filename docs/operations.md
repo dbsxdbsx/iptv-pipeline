@@ -76,3 +76,5 @@ git archive --format=tar origin/output | tar -x -C /var/www/iptv/
 | `config/delivery.json` | 调整投递优先级 |
 
 境外大盘：默认已停用 iptv-org 全球 `news` / `sports` / `movies`（保留 `languages/zho.m3u`）。若要重新扩 `global.m3u`，取消 `upstreams.txt` 里对应注释即可。
+
+主动大幅收缩供给后，publish 可能因「频道跌幅 > 25%」失败。需手动触发 `更新直播源` workflow，并勾选 **`approve_stable_baseline_reset`**（仍强制 `minimum_stable_channels`）。之后新基线生效，日常跌幅门禁恢复。

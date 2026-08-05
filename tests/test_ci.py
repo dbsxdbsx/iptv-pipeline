@@ -231,6 +231,40 @@ def test_quality_scope_migration_requires_explicit_approval(tmp_path):
     )
 
 
+def test_stable_baseline_reset_skips_drop_ratio(tmp_path):
+    stable, state = _stable_channels(3)
+    previous_meta = tmp_path / "meta.json"
+    previous_meta.write_text(
+        json.dumps(
+            {
+                "quality_scope": VALIDATION_SCOPE,
+                "stats": {
+                    "channels_stable": 100,
+                    "streams_stable": 120,
+                    "channels_with_backup": 40,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="stable 频道从"):
+        _enforce_quality_gate(
+            stable,
+            state,
+            _config(minimum_stable_channels=1, maximum_drop_ratio=0.25),
+            previous_meta,
+        )
+
+    _enforce_quality_gate(
+        stable,
+        state,
+        _config(minimum_stable_channels=1, maximum_drop_ratio=0.25),
+        previous_meta,
+        approve_stable_baseline_reset=True,
+    )
+
+
 def test_deep_result_shards_require_complete_indexes_and_correct_ownership(
     tmp_path,
 ):
