@@ -112,8 +112,8 @@ output 分支（产物/状态同一 generation）──▶ 小董电视 stable �
 - [ ] 补 `config/groups.json` 的 `upstream` 表：`数字频道`、`4K频道`、`APTV专享` 等混杂分组暂未映射
 - [ ] 决策：是否收敛境外供给。iptv-org 三个全球 categories 贡献 2274 条候选（约一半），且它们的台标集中在 `i.imgur.com`（1388 条）与 `upload.wikimedia.org`（226 条）——这两个 host 在国内基本拉不出来，而 App 的台标回退只覆盖中文台标，境外频道等于「主 URL 被墙 + 回退必然 404」
 - [ ] 为 `aktv.space` 找官方新址或替代的港台专项源
-- [ ] 有国内 VPS / NAS 后增加独立国内验证视角；在此之前不宣称国内运营商可播率
-- [ ] 可选：稳定源质量闭环后再评估关键字搜索增量采集
+- [ ] 有国内 VPS / NAS 后增加独立国内验证视角；在此之前不宣称国内运营商可播率（2026-08-05 已先补 frankwuzp/BigBigGrandG/zbefine/vamoschuck/YanG/jia070310 等二线上游进候选池；若东方卫视等仍无法从 GH runner 深验进 stable，再走国内探测或 App 侧即时解析）
+- [ ] 可选：稳定源质量闭环后再评估关键字搜索增量采集 / 央视频等短效签名源
 
 ## Notes
 

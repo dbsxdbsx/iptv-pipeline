@@ -21,6 +21,18 @@ https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u   # fanm
 https://raw.githubusercontent.com/YueChan/Live/main/IPTV.m3u              # YueChan 聚合（原 APTV.m3u 已改名）
 https://raw.githubusercontent.com/Kimentanm/aptv/master/m3u/iptv.m3u      # Kimentanm aptv
 
+# ---- 国内补源（2026-08-05：二线/运营商/省网清单，补卫视候选尤其是东方卫视）----
+https://raw.githubusercontent.com/frankwuzp/iptv-cn/main/tv-ipv4-cmcc.m3u # 移动 OTT 向 IPv4
+https://raw.githubusercontent.com/BigBigGrandG/IPTV-URL/release/Gather.m3u # 综合大盘（含 IPv6 卫视）
+https://raw.githubusercontent.com/zbefine/iptv/main/iptv.m3u              # zbefine 综合
+https://raw.githubusercontent.com/vamoschuck/TV/main/M3U                  # vamoschuck 综合
+https://raw.githubusercontent.com/YanG-1989/m3u/main/Gather.m3u           # YanG Gather（站点 Live.m3u 403，走 raw）
+# 省网组播转单播/4K（只收各省主表，数字后缀变体与主表高度重复）
+https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main/m3u/%E5%8C%97%E4%BA%AC%E8%81%94%E9%80%9A.m3u  # 北京联通
+https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main/m3u/%E5%A4%A9%E6%B4%A5%E8%81%94%E9%80%9A.m3u  # 天津联通
+https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main/m3u/%E5%B1%B1%E8%A5%BF%E8%81%94%E9%80%9A.m3u  # 山西联通
+https://raw.githubusercontent.com/jia070310/4K-IPTV-M3U/main/m3u/%E6%B5%B7%E5%8D%97%E7%94%B5%E4%BF%A1.m3u  # 海南电信
+
 # ---- 港澳台 ----
 https://raw.githubusercontent.com/suxuang/myIPTV/main/ipv4.m3u            # suxuang 典藏版，港澳台较全
 https://iptv-org.github.io/iptv/countries/hk.m3u                          # 香港
