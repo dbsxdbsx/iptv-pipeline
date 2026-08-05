@@ -1,0 +1,65 @@
+name: 国内视角深验
+
+# 仅在带 china 标签的 self-hosted runner 上跑。
+# 无此类 runner 时不会影响主更新流水线（本 workflow 与 update.yml 分离）。
+on:
+  # 有大陆 self-hosted runner（标签含 china）后再手动跑；
+  # 未注册 runner 时不要加 schedule，避免 job 无限排队。
+  workflow_dispatch:
+
+concurrency:
+  group: domestic-verify
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  domestic-verify:
+    runs-on: [self-hosted, linux, china]
+    timeout-minutes: 180
+    steps:
+      - name: 检出
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: 构建验证镜像
+        run: docker build -t "iptv-pipeline-validator:${GITHUB_SHA}" .
+
+      - name: 准备候选
+        run: |
+          set -euo pipefail
+          mkdir -p ci-work ci-results
+          docker run --rm \
+            --network host \
+            --volume "${PWD}/ci-work:/data" \
+            "iptv-pipeline-validator:${GITHUB_SHA}" \
+            prepare --config /app/config --bundle /data/candidates.json
+
+      - name: 深验（单分片全量，国内视角）
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --network host \
+            --volume "${PWD}/ci-work:/data:ro" \
+            --volume "${PWD}/ci-results:/results" \
+            "iptv-pipeline-validator:${GITHUB_SHA}" \
+            verify \
+            --config /app/config \
+            --bundle /data/candidates.json \
+            --output /results/deep-results-0.json \
+            --shard-index 0 \
+            --shard-count 1
+
+      - name: 上传国内视角对照产物
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: domestic-verify
+          path: |
+            ci-work/candidates.json
+            ci-work/upstream_report.md
+            ci-work/upstream_report.json
+            ci-results/deep-results-0.json
+          retention-days: 7
+          if-no-files-found: error

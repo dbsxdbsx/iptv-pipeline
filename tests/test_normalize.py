@@ -188,7 +188,7 @@ def test_foreign_fallback_can_be_disabled():
 def test_group_uses_all_streams_not_just_the_first():
     """同一频道来自多个上游时，只看第一条流会丢掉后来那条才带的分组信息。
 
-    内置源 bjzhou 整份都没有 group-title，它排在 upstreams 首位。
+    部分上游（如 bjzhou）整份都没有 group-title，又常排在 upstreams 首位。
     """
     streams = [
         Stream(url="http://a/1", name="", raw_name="东丰", raw_group=""),

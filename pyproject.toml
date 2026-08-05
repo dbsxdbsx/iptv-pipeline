@@ -1,7 +1,7 @@
 [project]
 name = "iptv-pipeline"
 version = "0.1.0"
-description = "自动采集、聚合、去重、验证公开 IPTV 直播源，定时产出 m3u/txt 供小董电视等客户端消费"
+description = "自动采集、聚合、去重、验证公开 IPTV 直播源，定时产出 m3u/txt 播放列表"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

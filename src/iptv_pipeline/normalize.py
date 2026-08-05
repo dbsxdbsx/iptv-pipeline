@@ -156,7 +156,7 @@ def build_channels(streams: list[Stream], cfg: Config) -> list[Channel]:
             ch.tvg_id = st.tvg_id
 
     # 分组必须等所有流都归到频道之后再判：同一频道来自多个上游，各家给的分组名不同，
-    # 只看第一条流会丢掉后来那条才带的分组信息（内置源 bjzhou 整份都没有 group-title）。
+    # 只看第一条流会丢掉后来那条才带的分组信息（部分上游整份没有 group-title）。
     for ch in channels.values():
         ch.group = assign_group(ch.name, (st.raw_group for st in ch.streams), cfg)
 

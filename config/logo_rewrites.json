@@ -14,9 +14,9 @@
     "而同一批图就在 fanmingming/live 仓库的 tv/ 目录里（933 张），两个域名的路径形态都是 tv/，",
     "与仓库完全对应，所以这里只换前缀、不动文件名。",
     "",
-    "改道目标暂用 GitHub raw：与 App 现有台标回退（live_panel 的 _ChannelLogoImage）同一个 host，",
-    "不算新增依赖。但台标是**用户设备**去拉的，国内拉 GitHub 慢——投递域名到位后应改指自有域名，",
-    "届时这张表是唯一改动点，不需要重发 App。"
+    "改道目标暂用 GitHub raw（与 fanmingming/live 仓库路径一致）。",
+    "台标由订阅端设备直接拉取，国内访问 GitHub 可能较慢；若日后有自有静态站，",
+    "只需改本表前缀，不必改管道其它逻辑。"
   ],
   "rewrites": {
     "https://live.fanmingming.cn/": "https://raw.githubusercontent.com/fanmingming/live/main/",

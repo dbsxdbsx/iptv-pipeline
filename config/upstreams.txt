@@ -14,14 +14,14 @@
 # ——fanmingming 的 live.fanmingming.cn 挂掉时，同一批内容在仓库里完好无损。
 
 # ---- 国内（央视/卫视/地方台，GitHub 自动更新型）----
-https://raw.githubusercontent.com/bjzhou/iptv-collector/output/iptv.m3u   # 我们 App 现内置源，ffmpeg 深测型
+https://raw.githubusercontent.com/bjzhou/iptv-collector/output/iptv.m3u   # ffmpeg 深测型聚合
 https://live.zbds.top/tv/iptv4.m3u                                        # vbskycn，服务器每 6h 扫描验证
-https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/itv.m3u    # fanmingming 主表，台标事实标准
+https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/itv.m3u    # fanmingming 主表，台标资源丰富
 https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u   # fanmingming IPv6 变体
 https://raw.githubusercontent.com/YueChan/Live/main/IPTV.m3u              # YueChan 聚合（原 APTV.m3u 已改名）
 https://raw.githubusercontent.com/Kimentanm/aptv/master/m3u/iptv.m3u      # Kimentanm aptv
 
-# ---- 国内补源（2026-08-05：二线/运营商/省网清单，补卫视候选尤其是东方卫视）----
+# ---- 国内补源（二线/运营商/省网清单）----
 https://raw.githubusercontent.com/frankwuzp/iptv-cn/main/tv-ipv4-cmcc.m3u # 移动 OTT 向 IPv4
 https://raw.githubusercontent.com/BigBigGrandG/IPTV-URL/release/Gather.m3u # 综合大盘（含 IPv6 卫视）
 https://raw.githubusercontent.com/zbefine/iptv/main/iptv.m3u              # zbefine 综合
@@ -38,10 +38,12 @@ https://raw.githubusercontent.com/suxuang/myIPTV/main/ipv4.m3u            # suxu
 https://iptv-org.github.io/iptv/countries/hk.m3u                          # 香港
 https://iptv-org.github.io/iptv/countries/tw.m3u                          # 台湾
 https://iptv-org.github.io/iptv/countries/mo.m3u                          # 澳门
-# http://aktv.space/live.m3u                                              # AKTV 港台专项：2026-08-04 起 404，域名仍在但无此路径；未找到官方新址
+# http://aktv.space/live.m3u                                              # 2026-08-04 起 404；2026-08-05 仍无官方继任地址
 
-# ---- 国际（iptv-org 全球库，按语言/分类取子集，降低体积）----
+# ---- 中文扩展（iptv-org）----
 https://iptv-org.github.io/iptv/languages/zho.m3u                         # 中文频道
-https://iptv-org.github.io/iptv/categories/news.m3u                       # 国际新闻
-https://iptv-org.github.io/iptv/categories/sports.m3u                     # 国际体育
-https://iptv-org.github.io/iptv/categories/movies.m3u                     # 国际电影
+# 默认停用全球大盘：news/sports/movies 体量大、台标多在境外 CDN，深验贵且国内可用性差。
+# 若要扩 global.m3u，取消下面三行注释即可。
+# https://iptv-org.github.io/iptv/categories/news.m3u
+# https://iptv-org.github.io/iptv/categories/sports.m3u
+# https://iptv-org.github.io/iptv/categories/movies.m3u

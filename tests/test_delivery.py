@@ -25,7 +25,8 @@ def test_delivery_json_loads_ordered_endpoints():
     assert cfg.delivery.manifest_endpoints
     assert cfg.delivery.playlist_endpoints[0].endswith("stable.m3u")
     assert cfg.delivery.manifest_endpoints[0].endswith("manifest.json")
-    # jsDelivr 必须作为第二镜像，GitHub raw 被墙时才能回退
+    # Pages（若启用）优先；raw + jsDelivr 必须保留作回退
+    assert any("raw.githubusercontent.com" in u for u in cfg.delivery.playlist_endpoints)
     assert any("jsdelivr" in u for u in cfg.delivery.playlist_endpoints)
 
 

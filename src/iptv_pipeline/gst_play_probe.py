@@ -2,9 +2,8 @@
 
 ``gst-discoverer-1.0`` CLI 无法给 HLS 分片/子 playlist 注入 UA/Referer。
 本模块用 playbin3（若可用且存在 demux2）或旧 playbin，挂
-``element-setup`` + ``deep-element-added``，与小董电视
-``PlaybinConfig::configure_http_headers`` 同构，再以 fakesink 收到视频缓冲
-作为「可发现视频」判据。
+``element-setup`` + ``deep-element-added`` 向 ``souphttpsrc`` 注入公开头，
+再以 fakesink 收到视频缓冲作为「可发现视频」判据。
 
 设计为**独立子进程**入口（``python -m iptv_pipeline.gst_play_probe``），
 避免与 asyncio 并发深验抢同一个 GLib 主循环。
