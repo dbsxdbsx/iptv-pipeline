@@ -1,0 +1,11 @@
+{
+  "_comment": "投递端点写入 manifest.json，供客户端按序回退。自有域名插到列表最前即可，无需发版 App。",
+  "playlist_endpoints": [
+    "https://raw.githubusercontent.com/dbsxdbsx/iptv-pipeline/output/stable.m3u",
+    "https://cdn.jsdelivr.net/gh/dbsxdbsx/iptv-pipeline@output/stable.m3u"
+  ],
+  "manifest_endpoints": [
+    "https://raw.githubusercontent.com/dbsxdbsx/iptv-pipeline/output/manifest.json",
+    "https://cdn.jsdelivr.net/gh/dbsxdbsx/iptv-pipeline@output/manifest.json"
+  ]
+}

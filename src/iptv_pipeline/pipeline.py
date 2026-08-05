@@ -212,9 +212,22 @@ def write_outputs(
         name: hashlib.sha256((output_dir / name).read_bytes()).hexdigest() for name in files
     }
     manifest_files[".state/health.json"] = hashlib.sha256(state_path.read_bytes()).hexdigest()
+    playlist_endpoints = list(cfg.delivery.playlist_endpoints)
+    manifest_endpoints = list(cfg.delivery.manifest_endpoints)
+    # 缺省至少带上 GitHub raw，避免空 endpoints 让客户端失去回退能力。
+    if not playlist_endpoints:
+        playlist_endpoints = [
+            "https://raw.githubusercontent.com/dbsxdbsx/iptv-pipeline/output/stable.m3u",
+        ]
+    if not manifest_endpoints:
+        manifest_endpoints = [
+            "https://raw.githubusercontent.com/dbsxdbsx/iptv-pipeline/output/manifest.json",
+        ]
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generation": generation,
+        "endpoints": playlist_endpoints,
+        "manifest_endpoints": manifest_endpoints,
         "files": manifest_files,
     }
     (output_dir / "manifest.json").write_text(

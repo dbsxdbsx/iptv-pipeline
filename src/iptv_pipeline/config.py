@@ -59,6 +59,14 @@ class ValidationConfig:
     maximum_drop_ratio: float = 0.25
 
 
+@dataclass(frozen=True)
+class DeliveryConfig:
+    """客户端投递端点：写入 manifest，供 App 按序回退。"""
+
+    playlist_endpoints: list[str] = field(default_factory=list)
+    manifest_endpoints: list[str] = field(default_factory=list)
+
+
 @dataclass
 class Config:
     upstreams: list[str]
@@ -79,6 +87,7 @@ class Config:
     #: 台标 URL 前缀重写表 (旧前缀, 新前缀)，保序，先命中先用
     logo_rewrites: list[tuple[str, str]] = field(default_factory=list)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
+    delivery: DeliveryConfig = field(default_factory=DeliveryConfig)
 
     @classmethod
     def load(cls, config_dir: Path) -> Config:
@@ -89,6 +98,7 @@ class Config:
         groups = _load_groups(config_dir / "groups.json")
         validation = _load_validation(config_dir / "validation.json")
         logo_rewrites = _load_logo_rewrites(config_dir / "logo_rewrites.json")
+        delivery = _load_delivery(config_dir / "delivery.json")
 
         return cls(
             upstreams=upstreams,
@@ -101,6 +111,7 @@ class Config:
             foreign_group=groups.foreign_group,
             logo_rewrites=logo_rewrites,
             validation=validation,
+            delivery=delivery,
         )
 
     def group_scope(self, group_name: str) -> str:
@@ -216,4 +227,32 @@ def _load_validation(path: Path) -> ValidationConfig:
         grace_rounds=max(0, int(data.get("grace_rounds", 2))),
         minimum_stable_channels=max(1, int(data.get("minimum_stable_channels", 100))),
         maximum_drop_ratio=max(0.0, min(1.0, float(data.get("maximum_drop_ratio", 0.25)))),
+    )
+
+
+def _load_delivery(path: Path) -> DeliveryConfig:
+    """读投递端点表。缺文件时给空列表，由 write_outputs 填默认 raw 地址。"""
+    if not path.exists():
+        return DeliveryConfig()
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    def _urls(key: str) -> list[str]:
+        raw = data.get(key, [])
+        if not isinstance(raw, list):
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            url = str(item).strip()
+            if not (url.startswith("http://") or url.startswith("https://")):
+                continue
+            if url in seen:
+                continue
+            seen.add(url)
+            out.append(url)
+        return out
+
+    return DeliveryConfig(
+        playlist_endpoints=_urls("playlist_endpoints"),
+        manifest_endpoints=_urls("manifest_endpoints"),
     )

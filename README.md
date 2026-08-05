@@ -58,6 +58,8 @@ bash scripts/probe_upstreams.sh
 https://raw.githubusercontent.com/<owner>/iptv-pipeline/output/stable.m3u
 ```
 
+投递契约：`config/delivery.json` 写入 `manifest.json` 的有序 `endpoints` / `manifest_endpoints`（schema v2）。小董电视内置源先拉 manifest 再按序回退 playlist；本地还写死了 GitHub raw + jsDelivr 引导地址，管道尚未发 v2 也能工作。以后有自有域名时，把主地址插到 `delivery.json` 列表最前即可，**不必发版 App**。
+
 `stable` 的含义是“从该轮 GitHub 托管 runner 网络视角可由 FFmpeg 解码并通过 GStreamer discoverer”，不是对所有国家、运营商或终端平台的绝对可播承诺。当前验证器无法等价覆盖的自定义请求头、IPv6 / 非 HTTP 流只保留在 `all.m3u`。
 
 ## 架构
