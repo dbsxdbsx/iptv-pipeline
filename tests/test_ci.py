@@ -171,6 +171,59 @@ def test_quality_gate_rejects_large_regression(tmp_path):
         )
 
 
+def test_quality_gate_warns_but_publishes_when_backup_channels_drop(tmp_path, caplog):
+    """双线路掉 25% 不得卡死整轮发布。
+
+    2026-08-30 起连续红叉：总台数还在（甚至更多），只是双线路从 105 掉到 56。
+    硬拦后 output 基线不再更新，定时任务就对着同一份 105 每 6 小时再失败一次。
+    """
+    import logging
+
+    stable, state = _stable_channels(20)
+    for channel in stable[:8]:
+        extra = Stream(
+            url=f"{channel.streams[0].url}?backup=1",
+            name=channel.name,
+            raw_name=channel.name,
+        )
+        state.apply_deep_result(
+            extra.state_key(),
+            DeepProbeResult(
+                DeepProbeStatus.PASS,
+                "decoded",
+                checked_at=1000.0,
+                decoded_frames=10,
+            ),
+            ValidationConfig(),
+        )
+        channel.streams.append(extra)
+
+    previous_meta = tmp_path / "meta.json"
+    previous_meta.write_text(
+        json.dumps(
+            {
+                "quality_scope": VALIDATION_SCOPE,
+                "stats": {
+                    "channels_stable": 20,
+                    "streams_stable": 30,
+                    "channels_with_backup": 16,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _enforce_quality_gate(
+            stable,
+            state,
+            _config(minimum_stable_channels=1, maximum_drop_ratio=0.25),
+            previous_meta,
+        )
+
+    assert any("双线路频道从 16 降至 8" in record.message for record in caplog.records)
+
+
 def test_quality_gate_rejects_route_count_regression(tmp_path):
     stable, state = _stable_channels(10)
     previous_meta = tmp_path / "meta.json"

@@ -424,11 +424,16 @@ def _enforce_quality_gate(
         if previous_backup_channels > 0
         else 0.0
     )
+    # 双线路是小样本（上一代大约一百台），同一条 25% 红线只相当于掉二十几台。
+    # 公开上游备选线抖动时硬拦，output 基线就冻住，之后每 6 小时对着同一份旧数再红一次。
+    # 总台数 / 总线数跌幅仍是硬门禁；这里只告警，让新 PASS 能发出来。
     if backup_drop_ratio > cfg.validation.maximum_drop_ratio:
-        raise RuntimeError(
-            "质量门禁失败: "
-            f"双线路频道从 {previous_backup_channels} 降至 {current_backup_channels}"
-            f"（-{backup_drop_ratio:.1%}）"
+        logger.warning(
+            "双线路频道从 %d 降至 %d（-%.1f%%），超过 %.0f%% 告警线但仍继续发布",
+            previous_backup_channels,
+            current_backup_channels,
+            backup_drop_ratio * 100,
+            cfg.validation.maximum_drop_ratio * 100,
         )
 
 

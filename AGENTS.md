@@ -45,7 +45,7 @@ config/upstreams.txt → fetch → parse(headers/m3u/txt) → normalize
 - **验证边界**：`stable` 表示当前验证 runner 的 FFmpeg 可解码且通过 GStreamer 门禁。无自定义头走 `gst-discoverer`；带 UA/Referer 等公开头的线路走 `gst_play_probe`（playbin3+demux2 优先，否则 playbin；双信号注入 `souphttpsrc`）。探针不可用时仍 fail closed。不可写成全平台“保证可播”。未验证 IPv6/非 HTTP 流不得进入 stable。
 - **工具链范围**：验证镜像必须固定基础镜像 digest 与 FFmpeg/GStreamer 直接包版本；任何版本升级都必须同步升级 `VALIDATION_SCOPE`。
 - **产物契约**：默认订阅面是 `stable.m3u`；`all.m3u`/`all.txt` 仅诊断。`cn.m3u`/`global.m3u` 从 stable 派生；所有产物与 `meta.json`、`.state/health.json` 必须共享同一 generation。投递端点写在 `config/delivery.json`，由 `write_outputs` 嵌入 `manifest.json`；自有域名或 Pages 主站插到列表最前即可，订阅端按 manifest 热更新，无需为换 URL 改客户端二进制。
-- **原子发布**：状态只放 output 分支；验证 job 无写权限。频道/线路跌幅等硬门禁失败时 output SHA 必须不变；GRACE 占比偏高只告警仍发布。更新必须使用代际校验/`force-with-lease`，禁止盲目 force-push。
+- **原子发布**：状态只放 output 分支；验证 job 无写权限。总台数 / 总线数跌幅等硬门禁失败时 output SHA 必须不变；GRACE 占比偏高、双线路台数下跌只告警仍发布。更新必须使用代际校验/`force-with-lease`，禁止盲目 force-push。
 - **验证 scope 不变式**：改变严格准入定义必须同步升级 `VALIDATION_SCOPE`；旧 PASS/GRACE 不得跨 scope 宽限，首轮基线只能通过手动 workflow 的 `approve_quality_scope_migration` 显式批准。
 - **公共头安全**：只透传 UA/Referer/Origin/Accept 类头，禁止 Cookie、Authorization、CR/LF 进入产物或日志；FFmpeg 命令不得拼 shell 字符串。
 - **网络隔离**：CI 的 prepare/verify 必须在无凭据容器内运行，并通过 `DOCKER-USER` 阻断私网、metadata、组播目标；禁止改回 host `OUTPUT` 防火墙（会切断 Actions runner 心跳）。
