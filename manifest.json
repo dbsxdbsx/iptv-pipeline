@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "generation": "f8a296d36b804c499124a3dabf137e4f",
+  "endpoints": [
+    "https://dbsxdbsx.github.io/iptv-pipeline/stable.m3u",
+    "https://raw.githubusercontent.com/dbsxdbsx/iptv-pipeline/output/stable.m3u",
+    "https://cdn.jsdelivr.net/gh/dbsxdbsx/iptv-pipeline@output/stable.m3u"
+  ],
+  "manifest_endpoints": [
+    "https://dbsxdbsx.github.io/iptv-pipeline/manifest.json",
+    "https://raw.githubusercontent.com/dbsxdbsx/iptv-pipeline/output/manifest.json",
+    "https://cdn.jsdelivr.net/gh/dbsxdbsx/iptv-pipeline@output/manifest.json"
+  ],
+  "files": {
+    "all.m3u": "280a820c7ab2cf91960b910a3a2cade47883e2ebb51c5bdc974f068e27296d64",
+    "all.txt": "e6343da390a99617c170b4f519863555944e44f8d226f09e48f44609ca5ae34d",
+    "stable.m3u": "3c44e488ada437320d08cc8b6752998fd07a82383bfd02ace9a9eb83e073ade8",
+    "stable.txt": "30c7a96e2a5f3e2965c807e0d6b52ff2d66e7a77118152f8937117d0762b839d",
+    "cn.m3u": "99706c87b671407e41a42dc0beeed3df614c55a2abd8fd584e2aa9324765c397",
+    "global.m3u": "a11d10ccdec67c8042d545cb8ffa1756d48f6477f02510df3c997eefd0728b8e",
+    "meta.json": "118e924f6130d959bafa906e09758191f1ba1c16d434a66cab976a3476a92f1a",
+    ".state/health.json": "09f88505711f1841fed82c7e59ba33496459c24be24e91a6865d5a4f3b454bbb"
+  }
+}
